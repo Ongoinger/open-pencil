@@ -15,41 +15,12 @@ fn enumerate_system_fonts() -> Vec<FontFamily> {
     let mut families: Vec<FontFamily> = Vec::new();
 
     if let Ok(family_names) = source.all_families() {
-        for name in &family_names {
-            if let Ok(handle) = source.select_family_by_name(name) {
-                let styles: Vec<String> = handle
-                    .fonts()
-                    .iter()
-                    .filter_map(|f| {
-                        f.load().ok().map(|font| {
-                            let props = font.properties();
-                            let mut style = match props.weight.0 as i32 {
-                                0..=150 => "Thin",
-                                151..=250 => "ExtraLight",
-                                251..=350 => "Light",
-                                351..=450 => "Regular",
-                                451..=550 => "Medium",
-                                551..=650 => "SemiBold",
-                                651..=750 => "Bold",
-                                751..=850 => "ExtraBold",
-                                _ => "Black",
-                            }
-                            .to_string();
-                            if props.style == font_kit::properties::Style::Italic {
-                                style.push_str(" Italic");
-                            }
-                            style
-                        })
-                    })
-                    .collect();
-
-                if !styles.is_empty() {
-                    families.push(FontFamily {
-                        family: name.clone(),
-                        styles,
-                    });
-                }
-            }
+        for name in family_names {
+            // Names only — avoid loading every font file at startup (OOM in WebView2).
+            families.push(FontFamily {
+                family: name,
+                styles: vec!["Regular".to_string()],
+            });
         }
     }
 

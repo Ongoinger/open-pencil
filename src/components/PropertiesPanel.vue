@@ -47,30 +47,15 @@ const { panels } = useI18n()
         <ZoomDropdown v-if="activeTab === 'design'" />
       </TabsList>
 
-      <TabsContent
-        value="design"
-        class="flex min-h-0 flex-1 flex-col"
-        :force-mount="true"
-        :hidden="activeTab !== 'design'"
-      >
+      <TabsContent value="design" class="flex min-h-0 flex-1 flex-col">
         <DesignPanel />
       </TabsContent>
 
-      <TabsContent
-        value="code"
-        class="flex min-h-0 flex-1 flex-col"
-        :force-mount="true"
-        :hidden="activeTab !== 'code'"
-      >
+      <TabsContent value="code" class="flex min-h-0 flex-1 flex-col">
         <CodePanel />
       </TabsContent>
 
-      <TabsContent
-        value="ai"
-        class="flex min-h-0 flex-1 flex-col"
-        :force-mount="true"
-        :hidden="activeTab !== 'ai'"
-      >
+      <TabsContent value="ai" class="flex min-h-0 flex-1 flex-col">
         <ChatPanel />
       </TabsContent>
     </TabsRoot>

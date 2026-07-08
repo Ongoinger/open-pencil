@@ -96,10 +96,8 @@ async function getTauriFonts(): Promise<TauriFontFamily[]> {
 
 export function preloadFonts(): void {
   configureTauriFontCache()
-  if (isTauri()) {
-    void getTauriFonts().then(registerFontFaces)
-    return
-  }
+  // Desktop: fonts load on demand via loadFont(); skip registering every system family.
+  if (isTauri()) return
   if (onlineFontsEnabled.value) fontManager.preloadWebFontFamilies()
 }
 
@@ -127,14 +125,6 @@ export async function clearDownloadedFontCache(): Promise<void> {
 
 export async function predownloadFallbackFonts() {
   return fontManager.ensureFallbackPack()
-}
-
-function registerFontFaces(fonts: TauriFontFamily[]): void {
-  if (typeof document === 'undefined') return
-  for (const { family } of fonts) {
-    const face = new FontFace(family, `local("${family}")`)
-    document.fonts.add(face)
-  }
 }
 
 export async function listFamilies(): Promise<FontFamilyOption[]> {
