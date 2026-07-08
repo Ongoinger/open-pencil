@@ -1,4 +1,22 @@
+import type { Plugin } from 'vite'
 import { VitePWA } from 'vite-plugin-pwa'
+
+const PWA_REGISTER_ID = 'virtual:pwa-register'
+const RESOLVED_PWA_REGISTER_ID = `\0${PWA_REGISTER_ID}`
+
+export function openPencilPwaRegisterStubPlugin(): Plugin {
+  return {
+    name: 'open-pencil:pwa-register-stub',
+    resolveId(id) {
+      if (id === PWA_REGISTER_ID) return RESOLVED_PWA_REGISTER_ID
+    },
+    load(id) {
+      if (id === RESOLVED_PWA_REGISTER_ID) {
+        return 'export function registerSW() { return () => {} }'
+      }
+    }
+  }
+}
 
 export function openPencilPwaPlugin() {
   return VitePWA({
