@@ -80,6 +80,13 @@ export function createGraphEventSubscription(options: GraphEventOptions) {
     options.requestRender()
   }
 
+  function evictDeletedNodeCaches(nodeId: string) {
+    for (const renderer of options.getRenderers()) {
+      renderer.invalidateNodePicture(nodeId)
+      renderer.invalidateVectorPath(nodeId)
+    }
+  }
+
   function subscribeToGraph() {
     unbindGraphEvents?.()
     unbindGraphEvents = options.getGraph().onNodeEvents({
@@ -90,6 +97,7 @@ export function createGraphEventSubscription(options: GraphEventOptions) {
         onNodeStructureChanged(node.id)
       },
       deleted: (id) => {
+        evictDeletedNodeCaches(id)
         options.emitEditorEvent('node:deleted', id)
         onNodeStructureChanged(id)
       },

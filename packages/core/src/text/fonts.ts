@@ -2,7 +2,7 @@ import type { CanvasKit, TypefaceFontProvider } from 'canvaskit-wasm'
 
 import type { SceneGraph } from '@open-pencil/scene-graph'
 
-import { DEFAULT_FONT_FAMILY, IS_BROWSER } from '#core/constants'
+import { DEFAULT_FONT_FAMILY, IS_BROWSER, IS_TAURI } from '#core/constants'
 import { fontFaceRenderFamily, parseFontStyle } from '#core/text/face'
 import { fontFallbackEntry } from '#core/text/fallbacks'
 import type { FontFallbackScript } from '#core/text/fallbacks'
@@ -131,6 +131,8 @@ export function weightToFigmaStyle(weight: number, italic = false): string {
   const label = FONT_WEIGHT_NAMES[rounded] ?? 'Regular'
   return italic ? `${label} Italic` : label
 }
+
+const LOADED_FAMILIES_LIMIT = 128
 
 export class FontManager {
   private loadedFamilies = new Map<string, ArrayBuffer>()
@@ -324,7 +326,7 @@ export class FontManager {
   }
 
   markLoaded(family: string, style: string, data: ArrayBuffer): void {
-    this.loadedFamilies.set(`${family}|${style}`, data)
+    this.cacheLoadedFamily(`${family}|${style}`, data)
     this.registerFontInCanvasKit(family, data)
   }
 
@@ -517,10 +519,19 @@ export class FontManager {
   }
 
   private registerAndCache(family: string, style: string, buffer: ArrayBuffer): ArrayBuffer | null {
-    this.loadedFamilies.set(`${family}|${style}`, buffer)
+    this.cacheLoadedFamily(`${family}|${style}`, buffer)
     this.registerFontInCanvasKit(family, buffer)
     this.registerFontInBrowser(family, style, buffer)
     return buffer
+  }
+
+  private cacheLoadedFamily(cacheKey: string, buffer: ArrayBuffer): void {
+    this.loadedFamilies.set(cacheKey, buffer)
+    while (this.loadedFamilies.size > LOADED_FAMILIES_LIMIT) {
+      const oldestKey = this.loadedFamilies.keys().next().value
+      if (!oldestKey) break
+      this.loadedFamilies.delete(oldestKey)
+    }
   }
 
   private registerFontInCanvasKit(family: string, data: ArrayBuffer): boolean {
@@ -534,7 +545,7 @@ export class FontManager {
   }
 
   private registerFontInBrowser(family: string, style: string, data: ArrayBuffer) {
-    if (!IS_BROWSER) return
+    if (!IS_BROWSER || IS_TAURI) return
     const weight = styleToWeight(style)
     const italic = style.toLowerCase().includes('italic') ? 'italic' : 'normal'
     const face = new FontFace(family, data, {

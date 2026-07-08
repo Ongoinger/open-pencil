@@ -5,7 +5,6 @@ import {
   DEFAULT_WEB_FONT_PROVIDER_SETTINGS,
   WEB_FONT_PROVIDER_IDS,
   fontManager,
-  styleToWeight,
   textNeededFallbackScripts,
   type FontFamilyOption,
   type LocalFontAccessState,
@@ -198,12 +197,6 @@ export async function loadFont(family: string, style = 'Regular'): Promise<Array
       const buffer = new Uint8Array(data).buffer
 
       fontManager.markLoaded(family, style, buffer)
-
-      const weight = styleToWeight(style)
-      const italic = style.toLowerCase().includes('italic') ? 'italic' : 'normal'
-      const face = new FontFace(family, buffer, { weight: String(weight), style: italic })
-      await face.load()
-      document.fonts.add(face)
 
       return buffer
     } catch {
