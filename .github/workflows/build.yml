@@ -16,12 +16,13 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - platform: macos-latest
-            target: aarch64-apple-darwin
-            label: macos-arm64
-          - platform: macos-latest
-            target: x86_64-apple-darwin
-            label: macos-x64
+          # Fork 无 Apple 证书，跳过 macOS 构建
+          # - platform: macos-latest
+          #   target: aarch64-apple-darwin
+          #   label: macos-arm64
+          # - platform: macos-latest
+          #   target: x86_64-apple-darwin
+          #   label: macos-x64
           - platform: windows-latest
             target: x86_64-pc-windows-msvc
             label: windows-x64
