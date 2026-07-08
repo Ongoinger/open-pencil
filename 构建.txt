@@ -14,7 +14,7 @@ OpenPencil Fork — 改代码 + 打 exe 流程（方案 B）
   git tag v0.13.2-build2
   git push origin v0.13.2-build2
 
-  等 GitHub Actions Build 完成（约 15 分钟）
+  等 GitHub Actions → Build → windows-x64 变绿（约 15 分钟，只跑 1 个 job）
   下载：https://github.com/Ongoinger/open-pencil/releases
   文件：OpenPencil_0.13.2_x64-setup.exe
 

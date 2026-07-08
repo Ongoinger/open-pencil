@@ -1,13 +1,12 @@
 name: Deploy app
 
+# Fork 无 Cloudflare 密钥，不自动部署网页版
 on:
-  push:
-    tags:
-      - "v*"
   workflow_dispatch:
 
 jobs:
   deploy:
+    if: false
     runs-on: ubuntu-latest
     permissions:
       contents: read

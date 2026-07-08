@@ -16,22 +16,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # Fork 无 Apple 证书，跳过 macOS 构建
-          # - platform: macos-latest
-          #   target: aarch64-apple-darwin
-          #   label: macos-arm64
-          # - platform: macos-latest
-          #   target: x86_64-apple-darwin
-          #   label: macos-x64
           - platform: windows-latest
             target: x86_64-pc-windows-msvc
             label: windows-x64
-          - platform: windows-latest
-            target: aarch64-pc-windows-msvc
-            label: windows-arm64
-          - platform: ubuntu-22.04
-            target: x86_64-unknown-linux-gnu
-            label: linux-x64
 
     runs-on: ${{ matrix.platform }}
     steps:

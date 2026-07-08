@@ -1,13 +1,12 @@
 name: Deploy docs
 
+# Fork 无 Cloudflare 密钥，不自动部署文档站
 on:
-  push:
-    tags:
-      - "v*"
   workflow_dispatch:
 
 jobs:
   deploy:
+    if: false
     runs-on: ubuntu-latest
     permissions:
       contents: read
