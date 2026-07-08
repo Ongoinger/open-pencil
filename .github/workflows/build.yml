@@ -117,7 +117,7 @@ jobs:
           uploadUpdaterSignatures: false
 
   publish-npm:
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: false # Fork 无 @open-pencil npm 发布权限，跳过
     needs: build
     runs-on: ubuntu-latest
     permissions:
