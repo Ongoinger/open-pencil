@@ -1,27 +1,12 @@
 name: Deploy docs
 
+# Fork 无 Cloudflare 密钥，不自动部署文档站
 on:
-  push:
-    branches: [master]
-    paths:
-      - 'packages/docs/**'
   workflow_dispatch:
 
 jobs:
   deploy:
+    if: false
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      deployments: write
     steps:
-      - uses: actions/checkout@v4
-
-      - uses: ./.github/actions/setup-bun
-
-      - run: bun run --filter @open-pencil/docs build
-
-      - uses: cloudflare/wrangler-action@v3
-        with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: pages deploy packages/docs/.vitepress/dist --project-name=openpencil-docs
+      - run: echo "skipped"

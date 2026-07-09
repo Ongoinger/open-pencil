@@ -1,32 +1,12 @@
 name: Deploy app
 
+# Fork 无 Cloudflare 密钥，不自动部署网页版
 on:
-  push:
-    branches: [master]
-    paths-ignore:
-      - 'packages/docs/**'
-      - 'openspec/**'
-      - '*.md'
   workflow_dispatch:
 
 jobs:
   deploy:
+    if: false
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      deployments: write
     steps:
-      - uses: actions/checkout@v4
-
-      - uses: ./.github/actions/setup-bun
-
-      - name: Format check
-        run: bun run format:check
-
-      - run: bun run build
-
-      - uses: cloudflare/wrangler-action@v3
-        with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: pages deploy dist --project-name=openpencil-app
+      - run: echo "skipped"
