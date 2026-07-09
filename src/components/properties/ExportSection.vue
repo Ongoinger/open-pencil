@@ -158,12 +158,18 @@ onScopeDispose(() => {
         :label="panels.exportScale"
         @update:model-value="updateScale(i, Number($event))"
       />
-      <AppSelect
-        :model-value="setting.format"
-        :options="FORMAT_OPTIONS"
-        :label="panels.exportFormat"
-        @update:model-value="updateFormat(i, $event as ExportFormatId)"
-      />
+      <Tip :label="panels.exportFormat">
+        <select
+          data-test-id="export-format-select"
+          :value="setting.format"
+          class="min-w-0 flex-1 cursor-pointer rounded border border-border bg-input px-1.5 py-1 text-xs text-surface outline-none hover:bg-hover"
+          @change="updateFormat(i, ($event.target as HTMLSelectElement).value as ExportFormatId)"
+        >
+          <option v-for="opt in FORMAT_OPTIONS" :key="opt.value" :value="opt.value">
+            {{ opt.label }}
+          </option>
+        </select>
+      </Tip>
       <Tip :label="panels.removeExport">
         <button
           :class="useIconButtonUI({ ui: { base: 'shrink-0' } }).base"
