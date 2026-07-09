@@ -34,6 +34,7 @@ const FORMAT_OPTIONS: { value: ExportFormatId; label: string }[] = [
   { value: 'jpg', label: 'JPG' },
   { value: 'webp', label: 'WEBP' },
   { value: 'svg', label: 'SVG' },
+  { value: 'html', label: 'HTML' },
   { value: 'fig', label: '.fig' }
 ]
 

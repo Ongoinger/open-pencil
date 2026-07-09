@@ -8,6 +8,7 @@ export {
   jpgFormat,
   webpFormat,
   svgFormat,
+  htmlFormat,
   jsxFormat
 } from './formats'
 export { exportFigFile, parseFigFile, readFigFile } from './formats/fig'
@@ -24,6 +25,7 @@ export {
   type ExportFormat
 } from './formats/raster'
 export { renderNodesToSVG, geometryBlobToSVGPath, vectorNetworkToSVGPaths } from './formats/svg'
+export { renderNodesToHTML, type HTMLExportOptions } from './formats/html'
 export type {
   IOFormatRole,
   IOFormatCategory,

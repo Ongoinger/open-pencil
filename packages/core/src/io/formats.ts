@@ -3,6 +3,7 @@ import { sceneNodeToJSX, selectionToJSX } from '#core/design-jsx'
 import { exportFigFile, parseFigFile } from './formats/fig'
 import { parsePenFile } from './formats/pen'
 import { headlessRenderNodes, renderNodesToImage, type RasterExportFormat } from './formats/raster'
+import { renderNodesToHTML } from './formats/html'
 import { renderNodesToSVG } from './formats/svg'
 import { extractExportGraph, findPageId } from './subgraph'
 import type {
@@ -285,6 +286,58 @@ export const pdfFormat: IOFormatAdapter = {
   }
 }
 
+function resolveExportTitle(
+  graph: ExportRequest['graph'],
+  target: ExportRequest['target']
+): string {
+  if (target.scope === 'page') return graph.getNode(target.pageId)?.name ?? 'Page'
+  if (target.scope === 'selection' && target.nodeIds.length === 1) {
+    return graph.getNode(target.nodeIds[0])?.name ?? 'Export'
+  }
+  if (target.scope === 'node') return graph.getNode(target.nodeId)?.name ?? 'Export'
+  const page = graph.getPages()[0]
+  return page.name || 'Export'
+}
+
+export const htmlFormat: IOFormatAdapter = {
+  id: 'html',
+  label: 'HTML',
+  role: 'derived-export',
+  category: 'code',
+  extensions: ['html'],
+  mimeTypes: ['text/html'],
+  support: {
+    exportDocument: true,
+    exportPage: true,
+    exportSelection: true,
+    exportNode: true
+  },
+  exportOptions: {
+    scale: false,
+    quality: false,
+    colorSpace: true
+  },
+  async exportContent(request, options?: SVGExportOptions) {
+    const target = resolveExportNodes(request)
+    if (!target) throw new Error('Nothing to export')
+    const includePageBackground =
+      request.target.scope === 'page' || request.target.scope === 'document'
+    const data = renderNodesToHTML(request.graph, target.pageId, target.nodeIds, {
+      title: resolveExportTitle(request.graph, request.target),
+      colorSpace: options?.colorSpace,
+      includePageBackground
+    })
+    if (!data) throw new Error('Nothing to export')
+    return {
+      format: 'html',
+      mimeType: 'text/html',
+      extension: 'html',
+      data,
+      encoding: 'utf8'
+    }
+  }
+}
+
 export const jsxFormat: IOFormatAdapter = {
   id: 'jsx',
   label: 'JSX',
@@ -328,5 +381,6 @@ export const BUILTIN_IO_FORMATS: IOFormatAdapter[] = [
   webpFormat,
   svgFormat,
   pdfFormat,
+  htmlFormat,
   jsxFormat
 ]
