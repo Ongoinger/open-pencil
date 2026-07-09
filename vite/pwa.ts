@@ -28,3 +28,16 @@ export function openPencilPwaPlugin() {
     }
   })
 }
+
+export function openPencilPwaRegisterStubPlugin() {
+  return {
+    name: 'open-pencil-pwa-register-stub',
+    resolveId(id: string) {
+      if (id === 'virtual:pwa-register') return id
+    },
+    load(id: string) {
+      if (id !== 'virtual:pwa-register') return
+      return 'export function registerSW() { return () => {} }'
+    }
+  }
+}

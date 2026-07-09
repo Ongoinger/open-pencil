@@ -3,7 +3,6 @@ import { useLocalStorage } from '@vueuse/core'
 import type { SceneGraph } from '@open-pencil/core/scene-graph'
 import {
   fontManager,
-  styleToWeight,
   type FontFamilyOption,
   type LocalFontAccessState
 } from '@open-pencil/core/text'
@@ -55,10 +54,8 @@ async function getTauriFonts(): Promise<TauriFontFamily[]> {
 
 export function preloadFonts(): void {
   configureTauriFontCache()
-  if (isTauri()) {
-    void getTauriFonts().then(registerFontFaces)
-    return
-  }
+  // Desktop: fonts load on demand via loadFont(); skip registering every system family.
+  if (isTauri()) return
   if (googleFontsEnabled.value) fontManager.preloadGoogleFamilies()
 }
 
@@ -86,14 +83,6 @@ export async function clearDownloadedFontCache(): Promise<void> {
 
 export async function predownloadFallbackFonts() {
   return fontManager.ensureFallbackPack()
-}
-
-function registerFontFaces(fonts: TauriFontFamily[]): void {
-  if (typeof document === 'undefined') return
-  for (const { family } of fonts) {
-    const face = new FontFace(family, `local("${family}")`)
-    document.fonts.add(face)
-  }
 }
 
 export async function listFamilies(): Promise<FontFamilyOption[]> {
@@ -143,13 +132,6 @@ export async function loadFont(family: string, style = 'Regular'): Promise<Array
       const buffer = new Uint8Array(data).buffer
 
       fontManager.markLoaded(family, style, buffer)
-
-      const weight = styleToWeight(style)
-      const italic = style.toLowerCase().includes('italic') ? 'italic' : 'normal'
-      const face = new FontFace(family, buffer, { weight: String(weight), style: italic })
-      await face.load()
-      document.fonts.add(face)
-
       return buffer
     } catch {
       return fontManager.loadFont(family, style)

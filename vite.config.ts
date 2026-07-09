@@ -11,11 +11,12 @@ import packageJson from './package.json'
 import { createOpenPencilAliases } from './vite/aliases'
 import { localAutomationToken, openPencilAutomationPlugin } from './vite/automation'
 import { copyCanvasKitAssetsPlugin } from './vite/canvaskit-assets'
-import { openPencilPwaPlugin } from './vite/pwa'
+import { openPencilPwaPlugin, openPencilPwaRegisterStubPlugin } from './vite/pwa'
 import { rawMarkdownPlugin } from './vite/raw-markdown'
 import { createDevServerOptions } from './vite/server'
 
 const host = process.env.TAURI_DEV_HOST
+const isTauriBuild = Boolean(process.env.TAURI_ENV_PLATFORM)
 
 export default defineConfig(async ({ command }) => ({
   resolve: {
@@ -33,11 +34,12 @@ export default defineConfig(async ({ command }) => ({
     Components({ resolvers: [IconsResolver({ prefix: 'icon' })] }),
     openPencilAutomationPlugin(command, host),
     vue(),
-    openPencilPwaPlugin()
+    ...(isTauriBuild ? [openPencilPwaRegisterStubPlugin()] : [openPencilPwaPlugin()])
   ],
   clearScreen: false,
   build: {
-    chunkSizeWarningLimit: 2500
+    chunkSizeWarningLimit: 2500,
+    ...(isTauriBuild ? { modulePreload: false } : {})
   },
   server: createDevServerOptions(host)
 }))

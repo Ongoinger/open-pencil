@@ -1,3 +1,5 @@
+import { onScopeDispose } from 'vue'
+
 import type { useCollabInjected } from '@/app/collab/use'
 import type { EditorStore } from '@/app/editor/active-store'
 
@@ -10,7 +12,10 @@ export function useCanvasCollaborationAwareness(store: EditorStore, collab: Coll
     collab?.updateCursor(cx, cy, store.state.currentPageId)
   }
 
-  store.onEditorEvent('selection:changed', (ids) => collab?.updateSelection(ids))
+  const stopSelectionSync = store.onEditorEvent('selection:changed', (ids) =>
+    collab?.updateSelection(ids)
+  )
+  onScopeDispose(stopSelectionSync)
 
   return { updateCursor }
 }
