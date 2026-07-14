@@ -437,7 +437,14 @@ export class FontManager {
     options: { allowVariableLocalFonts?: boolean } = {}
   ): Promise<string[]> {
     const manifest = fontFallbackEntry(script, this.fallbackUserAgent)
-    const preferSingleFallbackFace = script === 'cjk-sc' || script === 'cjk-tc'
+    // Always stop after the first usable face for CJK packs — Windows CJK TTFs
+    // are tens of MB; loading YaHei + SimHei + DengXian together OOMs WebView2.
+    const preferSingleFallbackFace =
+      script === 'cjk' ||
+      script === 'cjk-sc' ||
+      script === 'cjk-tc' ||
+      script === 'cjk-jp' ||
+      script === 'cjk-kr'
     if (preferSingleFallbackFace && targetFamilies.length > 0) return targetFamilies
 
     for (const family of manifest.localFamilies) {
@@ -534,32 +541,10 @@ export class FontManager {
   private cacheLoadedFamily(cacheKey: string, buffer: ArrayBuffer): void {
     if (this.loadedFamilies.has(cacheKey)) this.loadedFamilies.delete(cacheKey)
     this.loadedFamilies.set(cacheKey, buffer)
-    let evicted = false
     while (this.loadedFamilies.size > LOADED_FAMILIES_LIMIT) {
       const oldestKey = this.loadedFamilies.keys().next().value
       if (!oldestKey) break
       this.loadedFamilies.delete(oldestKey)
-      evicted = true
-    }
-    // TypefaceFontProvider cannot unregister fonts — rebuild so WASM drops evicted faces.
-    if (evicted) this.requestProviderRebuild()
-  }
-
-  private providerRebuildListeners = new Set<() => void>()
-
-  /** Renderers call this so font LRU can recreate TypefaceFontProvider after evictions. */
-  onProviderRebuild(listener: () => void): () => void {
-    this.providerRebuildListeners.add(listener)
-    return () => this.providerRebuildListeners.delete(listener)
-  }
-
-  private requestProviderRebuild(): void {
-    for (const listener of this.providerRebuildListeners) {
-      try {
-        listener()
-      } catch (e) {
-        console.warn('Font provider rebuild failed:', e)
-      }
     }
   }
 

@@ -5,13 +5,12 @@ import {
   COMPONENT_LABEL_FONT_SIZE,
   DEFAULT_FONT_FAMILY,
   DEFAULT_FONT_SIZE,
+  IS_TAURI,
   LABEL_FONT_SIZE,
   SECTION_TITLE_FONT_SIZE,
   SIZE_FONT_SIZE
 } from '#core/constants'
 import { fontManager } from '#core/text/fonts'
-
-const providerRebuildUnsubs = new WeakMap<SkiaRenderer, () => void>()
 
 export function getFontProvider(r: SkiaRenderer) {
   return r.isDestroyed() || !r.fontProvider ? null : r.fontProvider
@@ -31,15 +30,6 @@ export async function loadFonts(
 ): Promise<void> {
   if (r.isDestroyed()) return
   rebuildFontProvider(r)
-  providerRebuildUnsubs.get(r)?.()
-  providerRebuildUnsubs.set(
-    r,
-    fontManager.onProviderRebuild(() => {
-      if (r.isDestroyed()) return
-      rebuildFontProvider(r)
-      r.invalidateAllPictures()
-    })
-  )
   const provider = r.fontProvider
   if (!provider) return
 
@@ -67,21 +57,23 @@ export async function loadFonts(
   r.fontsLoaded = true
   r.invalidateAllPictures()
 
-  const hadCJKFallback = fontManager.getCJKFallbackFamilies().length > 0
+  // Tauri/WebView2: do not prefetch CJK/Arabic fallback packs at startup.
+  // On Windows those are multi‑MB system TTFs (or full Noto downloads) and loading
+  // them for both scene+overlay renderers OOMs the renderer process.
+  // Fallbacks still load on demand via ensureGraphFonts / ensureFallbackPack.
+  if (IS_TAURI) return
+
   void fontManager.ensureCJKFallback().then((families) => {
     if (!r.isDestroyed() && families.length > 0) {
-      rebuildFontProvider(r)
       r.invalidateAllPictures()
-      if (!hadCJKFallback) onFallbackFontsLoaded?.()
+      onFallbackFontsLoaded?.()
     }
     return undefined
   })
-  const hadArabicFallback = fontManager.getArabicFallbackFamilies().length > 0
   void fontManager.ensureArabicFallback().then((families) => {
     if (!r.isDestroyed() && families.length > 0) {
-      rebuildFontProvider(r)
       r.invalidateAllPictures()
-      if (!hadArabicFallback) onFallbackFontsLoaded?.()
+      onFallbackFontsLoaded?.()
     }
     return undefined
   })

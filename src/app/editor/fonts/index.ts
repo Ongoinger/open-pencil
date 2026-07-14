@@ -66,6 +66,8 @@ function configureTauriFontCache() {
   tauriFontCacheConfigured = true
   fontManager.setDownloadedFontCache(createTauriDownloadedFontCache())
   fontManager.setWebFontFetch(tauriFetch)
+  // Load system CJK faces only on demand (ensureGraphFonts / text needing
+  // fallbacks). Prefetching them at startup OOMs WebView2 on Windows.
   fontManager.setHostFallbackFontLoader(loadFont)
 }
 
@@ -95,11 +97,9 @@ async function getTauriFonts(): Promise<TauriFontFamily[]> {
 
 export function preloadFonts(): void {
   configureTauriFontCache()
-  if (isTauri()) {
-    // Do not register every system font into document.fonts — that OOMs WebView2.
-    void getTauriFonts()
-    return
-  }
+  // Desktop: fonts load on demand via loadFont(); skip enumerating every system family
+  // at startup (list_system_fonts + later fallback loads spike WebView2 memory).
+  if (isTauri()) return
   if (onlineFontsEnabled.value) fontManager.preloadWebFontFamilies()
 }
 

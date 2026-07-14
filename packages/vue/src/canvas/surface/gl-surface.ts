@@ -9,7 +9,9 @@ type GLContext = ReturnType<CanvasKit['MakeGrContext']>
 export type CanvasGLContext = GLContext
 
 export function sizeCanvas(canvas: HTMLCanvasElement, editor: Editor) {
-  const dpr = window.devicePixelRatio || 1
+  // Cap DPR on high-DPI displays — full native DPR × dual WebGL canvases × 3×
+  // scene backing exceeds WebView2 GPU/memory budget on many Windows machines.
+  const dpr = Math.min(window.devicePixelRatio || 1, 1.5)
   canvas.width = canvas.clientWidth * dpr
   canvas.height = canvas.clientHeight * dpr
   if ('setViewportSize' in editor && typeof editor.setViewportSize === 'function') {

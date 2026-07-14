@@ -166,7 +166,7 @@ export function useCanvasSurfaceLifecycle({
     lifecycle,
     setCanvasKit,
     createSurface: surface.createSurface,
-    loadFonts: () => surface.getRenderer()?.loadFonts(surface.recreateSurfaceWithFonts),
+    loadFonts: () => surface.getRenderer()?.loadFonts(),
     renderNow: surface.renderNow,
     onReady
   })

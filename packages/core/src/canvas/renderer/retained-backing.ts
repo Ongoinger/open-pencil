@@ -9,7 +9,7 @@ import { clearSubtreePictureCache } from '#core/canvas/renderer/state'
 import type { RenderLayer } from './pipeline'
 
 const now = typeof performance !== 'undefined' ? () => performance.now() : () => 0
-const SCENE_BACKING_SCALE = 3
+const SCENE_BACKING_SCALE = 2
 const FRAME_BUDGET_60HZ_MS = 1000 / 60
 const MIN_SCENE_BACKING_IDLE_FRAMES = 2
 const MAX_SCENE_BACKING_IDLE_FRAMES = 18
