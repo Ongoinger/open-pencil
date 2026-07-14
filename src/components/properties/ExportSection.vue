@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, watch, onScopeDispose } from 'vue'
 
-import AppSelect from '@/components/ui/AppSelect.vue'
 import ExportScaleInput from '@/components/properties/ExportScaleInput.vue'
 import IconButton from '@/components/ui/IconButton.vue'
 import PanelSection from '@/components/ui/PanelSection.vue'
@@ -33,6 +32,7 @@ const FORMAT_OPTIONS: { value: ExportFormatId; label: string }[] = [
   { value: 'jpg', label: 'JPG' },
   { value: 'webp', label: 'WEBP' },
   { value: 'svg', label: 'SVG' },
+  { value: 'html', label: 'HTML' },
   { value: 'pdf', label: 'PDF' }
 ]
 
@@ -139,13 +139,18 @@ onScopeDispose(() => {
         :label="panels.exportScale"
         @update:model-value="updateScale(i, $event)"
       />
-      <AppSelect
-        data-test-id="app-select-trigger"
-        :model-value="setting.format"
-        :options="FORMAT_OPTIONS"
-        :label="panels.exportFormat"
-        @update:model-value="updateFormat(i, $event as ExportFormatId)"
-      />
+      <Tip :label="panels.exportFormat">
+        <select
+          data-test-id="export-format-select"
+          :value="setting.format"
+          class="min-w-0 flex-1 cursor-pointer rounded border border-border bg-input px-1.5 py-1 text-xs text-surface outline-none hover:bg-hover"
+          @change="updateFormat(i, ($event.target as HTMLSelectElement).value as ExportFormatId)"
+        >
+          <option v-for="opt in FORMAT_OPTIONS" :key="opt.value" :value="opt.value">
+            {{ opt.label }}
+          </option>
+        </select>
+      </Tip>
       <IconButton :label="panels.removeExport" class="shrink-0" @click="removeSetting(i)">
         <icon-lucide-minus class="size-3.5" />
       </IconButton>

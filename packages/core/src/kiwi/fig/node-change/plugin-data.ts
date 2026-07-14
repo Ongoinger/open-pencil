@@ -90,7 +90,12 @@ export function extractBoundVariables(nc: NodeChange): Record<string, string> {
 
 function isExportFormatId(value: unknown): value is ExportFormatId {
   return (
-    value === 'png' || value === 'jpg' || value === 'webp' || value === 'svg' || value === 'pdf'
+    value === 'png' ||
+    value === 'jpg' ||
+    value === 'webp' ||
+    value === 'svg' ||
+    value === 'pdf' ||
+    value === 'html'
   )
 }
 

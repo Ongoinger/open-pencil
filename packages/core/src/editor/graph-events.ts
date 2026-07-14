@@ -90,6 +90,11 @@ export function createGraphEventSubscription(options: GraphEventOptions) {
         onNodeStructureChanged(node.id)
       },
       deleted: (id) => {
+        // Evict Skia picture/path caches — otherwise deleted nodes keep WASM memory forever.
+        for (const renderer of options.getRenderers()) {
+          renderer.invalidateNodePicture(id)
+          renderer.invalidateVectorPath(id)
+        }
         options.emitEditorEvent('node:deleted', id)
         onNodeStructureChanged(id)
       },

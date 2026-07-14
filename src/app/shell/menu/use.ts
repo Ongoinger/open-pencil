@@ -68,6 +68,9 @@ export function useMenu() {
     'export-svg': () => {
       if (store.state.selectedIds.size > 0) void store.exportSelection(1, 'svg')
     },
+    'export-html': () => {
+      if (store.state.selectedIds.size > 0) void store.exportSelection(1, 'html')
+    },
     'export-fig': () => {
       if (store.state.selectedIds.size > 0) void store.exportSelection(1, 'fig')
     },

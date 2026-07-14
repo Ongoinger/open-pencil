@@ -11,6 +11,8 @@ import {
 } from '#core/constants'
 import { fontManager } from '#core/text/fonts'
 
+const providerRebuildUnsubs = new WeakMap<SkiaRenderer, () => void>()
+
 export function getFontProvider(r: SkiaRenderer) {
   return r.isDestroyed() || !r.fontProvider ? null : r.fontProvider
 }
@@ -29,6 +31,15 @@ export async function loadFonts(
 ): Promise<void> {
   if (r.isDestroyed()) return
   rebuildFontProvider(r)
+  providerRebuildUnsubs.get(r)?.()
+  providerRebuildUnsubs.set(
+    r,
+    fontManager.onProviderRebuild(() => {
+      if (r.isDestroyed()) return
+      rebuildFontProvider(r)
+      r.invalidateAllPictures()
+    })
+  )
   const provider = r.fontProvider
   if (!provider) return
 

@@ -132,7 +132,7 @@ export function weightToFigmaStyle(weight: number, italic = false): string {
   return italic ? `${label} Italic` : label
 }
 
-const LOADED_FAMILIES_LIMIT = 128
+const LOADED_FAMILIES_LIMIT = 64
 
 export class FontManager {
   private loadedFamilies = new Map<string, ArrayBuffer>()
@@ -532,18 +532,43 @@ export class FontManager {
   }
 
   private cacheLoadedFamily(cacheKey: string, buffer: ArrayBuffer): void {
+    if (this.loadedFamilies.has(cacheKey)) this.loadedFamilies.delete(cacheKey)
     this.loadedFamilies.set(cacheKey, buffer)
+    let evicted = false
     while (this.loadedFamilies.size > LOADED_FAMILIES_LIMIT) {
       const oldestKey = this.loadedFamilies.keys().next().value
       if (!oldestKey) break
       this.loadedFamilies.delete(oldestKey)
+      evicted = true
+    }
+    // TypefaceFontProvider cannot unregister fonts — rebuild so WASM drops evicted faces.
+    if (evicted) this.requestProviderRebuild()
+  }
+
+  private providerRebuildListeners = new Set<() => void>()
+
+  /** Renderers call this so font LRU can recreate TypefaceFontProvider after evictions. */
+  onProviderRebuild(listener: () => void): () => void {
+    this.providerRebuildListeners.add(listener)
+    return () => this.providerRebuildListeners.delete(listener)
+  }
+
+  private requestProviderRebuild(): void {
+    for (const listener of this.providerRebuildListeners) {
+      try {
+        listener()
+      } catch (e) {
+        console.warn('Font provider rebuild failed:', e)
+      }
     }
   }
 
   private registerFontInCanvasKit(family: string, data: ArrayBuffer): boolean {
     if (!this.fontProvider || data.byteLength < 4) return false
+    if (this.registeredRenderFamilies.has(family)) return true
     try {
       this.fontProvider.registerFont(data, family)
+      this.registeredRenderFamilies.add(family)
       return true
     } catch {
       return false

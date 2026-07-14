@@ -42,7 +42,7 @@ export interface ClipboardShapedText {
   logicalIndexToCharacterOffsetMap: number[]
 }
 
-const FONT_FAMILY_CACHE_LIMIT = 256
+const FONT_FAMILY_CACHE_LIMIT = 64
 const fontFamilyCache = new Map<string, string[]>()
 
 function hasRequiredFallbackFonts(node: SceneNode): boolean {

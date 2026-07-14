@@ -44,6 +44,7 @@ export const APP_MENU_SCHEMA = [
         sub: [
           { id: 'export-png', label: 'PNG' },
           { id: 'export-svg', label: 'SVG' },
+          { id: 'export-html', label: 'HTML' },
           { id: 'export-fig', label: '.fig' }
         ]
       },
