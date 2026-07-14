@@ -6,12 +6,12 @@ import {
   SceneGraph,
   SkiaRenderer as SkiaRendererClass
 } from '@open-pencil/core'
+import type { SceneNode } from '@open-pencil/scene-graph'
 
 import { initCanvasKit } from '#cli/headless'
 import type { SkiaRenderer } from '#core/canvas/renderer'
 import { renderText } from '#core/canvas/scene'
-import { buildParagraph } from '#core/canvas/text'
-import type { SceneNode } from '#core/scene-graph'
+import { buildParagraph, isNodeFontLoaded } from '#core/canvas/text'
 import { fontManager } from '#core/text/fonts'
 
 import { expectDefined } from '#tests/helpers/assert'
@@ -22,10 +22,13 @@ function createMockCanvas() {
     drawParagraph: mock(() => undefined),
     drawPicture: mock(() => undefined),
     drawText: mock(() => undefined),
+    drawPath: mock(() => undefined),
     drawRect: mock(() => undefined),
     save: mock(() => undefined),
     saveLayer: mock(() => undefined),
     restore: mock(() => undefined),
+    translate: mock(() => undefined),
+    scale: mock(() => undefined),
     clipRect: mock(() => undefined)
   }
 }
@@ -36,6 +39,26 @@ function createMockParagraph() {
 
 function createMockPicture() {
   return { delete: mock(() => undefined) }
+}
+
+function squareCommandsBlob(): Uint8Array {
+  const blob = new Uint8Array(1 + 4 * 9 + 1)
+  const view = new DataView(blob.buffer)
+  let offset = 0
+  const commands = [
+    { command: 1, x: 0, y: 0 },
+    { command: 2, x: 1, y: 0 },
+    { command: 2, x: 1, y: 1 },
+    { command: 2, x: 0, y: 1 }
+  ]
+  for (const { command, x, y } of commands) {
+    blob[offset] = command
+    view.setFloat32(offset + 1, x, true)
+    view.setFloat32(offset + 5, y, true)
+    offset += 9
+  }
+  blob[offset] = 0
+  return blob
 }
 
 function createMockRenderer(overrides: Partial<Record<string, unknown>> = {}) {
@@ -52,12 +75,23 @@ function createMockRenderer(overrides: Partial<Record<string, unknown>> = {}) {
     },
     ck: {
       MakePicture: mock(() => createMockPicture()),
+      Path: class {
+        moveTo = mock(() => undefined)
+        lineTo = mock(() => undefined)
+        cubicTo = mock(() => undefined)
+        quadTo = mock(() => undefined)
+        close = mock(() => undefined)
+        setFillType = mock(() => undefined)
+        delete = mock(() => undefined)
+      },
       LTRBRect: mock((...args: number[]) => args),
       Color4f: mock((...args: number[]) => new Float32Array(args)),
+      FillType: { Winding: 0, EvenOdd: 1 },
       BlendMode: { SrcOver: 0, SrcIn: 1 },
       ClipOp: { Intersect: 0 }
     },
     DEFAULT_FONT_SIZE: 14,
+    isNodeBaseFontLoaded: mock(() => true),
     isNodeFontLoaded: mock(() => true),
     buildParagraph: mock(() => paragraph),
     _paragraph: paragraph,
@@ -67,6 +101,7 @@ function createMockRenderer(overrides: Partial<Record<string, unknown>> = {}) {
 
 function textNode(overrides: Partial<SceneNode> = {}): SceneNode {
   return {
+    type: 'TEXT',
     text: 'Hello 你好',
     fontSize: 16,
     fontFamily: 'Arial',
@@ -105,7 +140,10 @@ describe('renderText', () => {
   })
 
   test('skips text while the node font is not available', () => {
-    const r = createMockRenderer({ isNodeFontLoaded: mock(() => false) })
+    const r = createMockRenderer({
+      isNodeBaseFontLoaded: mock(() => false),
+      isNodeFontLoaded: mock(() => false)
+    })
     const canvas = createMockCanvas()
 
     renderText(r, canvas as never, textNode())
@@ -115,7 +153,7 @@ describe('renderText', () => {
     expect(canvas.drawText).not.toHaveBeenCalled()
   })
 
-  test('renders gradient text through a paragraph mask', () => {
+  test('renders gradient text through a paragraph mask without outline font data', () => {
     const r = createMockRenderer()
     const canvas = createMockCanvas()
 
@@ -135,15 +173,92 @@ describe('renderText', () => {
     expect(r._paragraph.delete).toHaveBeenCalledTimes(1)
   })
 
+  test('renders non-solid text fills as vector outlines when outline font data is available', async () => {
+    const interData = await Bun.file(repoPath('public/Inter-Regular.ttf')).arrayBuffer()
+    fontManager.markLoaded('Inter', 'Regular', interData)
+    const r = createMockRenderer()
+    const canvas = createMockCanvas()
+
+    renderText(
+      r,
+      canvas as never,
+      textNode({ text: 'OPEN', fontFamily: 'Inter', width: 120, height: 40 }),
+      {
+        type: 'GRADIENT_LINEAR',
+        visible: true,
+        opacity: 1,
+        gradientStops: [],
+        gradientTransform: { m00: 1, m01: 0, m02: 0, m10: 0, m11: 1, m12: 0 }
+      }
+    )
+
+    expect(canvas.drawPath).toHaveBeenCalledTimes(1)
+    expect(r.buildParagraph).not.toHaveBeenCalled()
+    expect(canvas.saveLayer).not.toHaveBeenCalled()
+  })
+
+  test('renders solid CJK text through paragraph shaping instead of outline fallback', () => {
+    const r = createMockRenderer()
+    const canvas = createMockCanvas()
+
+    renderText(
+      r,
+      canvas as never,
+      textNode({ text: '\u4e2d\u6587\u6807\u9898', fontFamily: 'Inter', width: 120, height: 40 }),
+      {
+        type: 'SOLID',
+        visible: true,
+        opacity: 1,
+        color: { r: 0, g: 0, b: 0, a: 1 }
+      }
+    )
+
+    expect(r.buildParagraph).toHaveBeenCalledTimes(1)
+    expect(canvas.drawParagraph).toHaveBeenCalledTimes(1)
+    expect(canvas.drawPath).not.toHaveBeenCalled()
+  })
+
   test('prefers textPicture over paragraph', () => {
     const r = createMockRenderer()
     const canvas = createMockCanvas()
-    const node = textNode({ textPicture: new Uint8Array([1, 2, 3]) })
+    const node = textNode({ text: 'Hello world', textPicture: new Uint8Array([1, 2, 3]) })
 
     renderText(r, canvas as never, node)
 
     expect(canvas.drawPicture).toHaveBeenCalledTimes(1)
     expect(r.buildParagraph).not.toHaveBeenCalled()
+  })
+
+  test('bypasses stale textPicture when fallback-backed CJK text can render live', () => {
+    const r = createMockRenderer()
+    const canvas = createMockCanvas()
+    const node = textNode({
+      text: '\u4e2d\u6587\u6807\u9898',
+      fontFamily: 'Inter',
+      textPicture: new Uint8Array([1, 2, 3])
+    })
+
+    renderText(r, canvas as never, node)
+
+    expect(canvas.drawPicture).not.toHaveBeenCalled()
+    expect(r.buildParagraph).toHaveBeenCalledTimes(1)
+    expect(canvas.drawParagraph).toHaveBeenCalledTimes(1)
+  })
+
+  test('keeps figmaDerivedTextGlyphs ahead of live paragraph rendering', () => {
+    const r = createMockRenderer()
+    const canvas = createMockCanvas()
+    const node = textNode({
+      text: '\u4e2d\u6587\u6807\u9898',
+      fontFamily: 'Inter',
+      figmaDerivedTextGlyphs: [{ commandsBlob: squareCommandsBlob(), x: 0, y: 0, fontSize: 1 }]
+    })
+
+    renderText(r, canvas as never, node)
+
+    expect(canvas.drawPath).toHaveBeenCalledTimes(1)
+    expect(r.buildParagraph).not.toHaveBeenCalled()
+    expect(canvas.drawParagraph).not.toHaveBeenCalled()
   })
 
   test('falls back to drawText only when fonts are NOT loaded', () => {
@@ -202,6 +317,26 @@ describe('renderText headless visual', () => {
     expect(resolveTextDirection('AUTO', 'مرحبا world')).toBe('RTL')
     expect(resolveTextDirection('AUTO', 'Hello مرحبا')).toBe('LTR')
     expect(resolveTextDirection('RTL', 'Hello')).toBe('RTL')
+  })
+
+  test('does not require fallback families when the primary font covers CJK glyphs', async () => {
+    const notoPath = repoPath('tests/fixtures/fonts/NotoSansSC-Regular.ttf')
+    const notoData = await Bun.file(notoPath).arrayBuffer()
+    fontManager.markLoaded('Noto Sans SC', 'Regular', notoData)
+    const manager = fontManager as typeof fontManager & { cjkFallbackFamilies: string[] }
+    const originalFallbacks = [...manager.cjkFallbackFamilies]
+    manager.cjkFallbackFamilies = []
+
+    try {
+      const loaded = isNodeFontLoaded(
+        { fontProvider: {}, fontsLoaded: true } as never,
+        textNode({ text: '你好世界', fontFamily: 'Noto Sans SC', fontWeight: 400 })
+      )
+
+      expect(loaded).toBe(true)
+    } finally {
+      manager.cjkFallbackFamilies = originalFallbacks
+    }
   })
 
   test('renders CJK text via fallback font through paragraph shaper', async () => {

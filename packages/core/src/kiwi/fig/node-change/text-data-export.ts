@@ -1,5 +1,6 @@
-import type { NodeChange, Paint } from '#core/kiwi/fig/codec'
-import type { CharacterStyleOverride, SceneNode } from '#core/scene-graph'
+import type { NodeChange, Paint } from '@open-pencil/kiwi/fig/codec'
+import type { CharacterStyleOverride, SceneNode } from '@open-pencil/scene-graph'
+
 import { normalizeFontFamily, weightToFigmaStyle } from '#core/text/fonts'
 
 import { applyFontFeaturesToKiwi } from './font/features'
@@ -10,6 +11,26 @@ export function fontVariationToKiwi(variation: SceneNode['fontVariations'][numbe
   return axisTag === undefined
     ? { axisName: variation.axis, value: variation.value }
     : { axisTag, axisName: variation.axis, value: variation.value }
+}
+
+function applyTextDecorationOverrideFields(
+  override: Record<string, unknown>,
+  style: CharacterStyleOverride,
+  fillToKiwiPaint: (fill: SceneNode['fills'][number]) => Paint
+): void {
+  if (style.textDecoration) override.textDecoration = style.textDecoration
+  if (style.textDecorationStyle) override.textDecorationStyle = style.textDecorationStyle
+  if (style.textDecorationThickness != null) {
+    override.textDecorationThickness = { value: style.textDecorationThickness, units: 'PIXELS' }
+  }
+  if (style.textDecorationSkipInk !== undefined)
+    override.textDecorationSkipInk = style.textDecorationSkipInk
+  if (style.textUnderlineOffset != null) {
+    override.textUnderlineOffset = { value: style.textUnderlineOffset, units: 'PIXELS' }
+  }
+  if (style.textDecorationFills && style.textDecorationFills.length > 0) {
+    override.textDecorationFillPaints = style.textDecorationFills.map(fillToKiwiPaint)
+  }
 }
 
 function textStyleOverrideToKiwi(
@@ -39,7 +60,7 @@ function textStyleOverrideToKiwi(
   if (style.lineHeight !== undefined && style.lineHeight !== null) {
     override.lineHeight = { value: style.lineHeight, units: 'PIXELS' }
   }
-  if (style.textDecoration) override.textDecoration = style.textDecoration
+  applyTextDecorationOverrideFields(override, style, fillToKiwiPaint)
   if (style.fills && style.fills.length > 0) {
     override.fillPaints = style.fills.map(fillToKiwiPaint)
   }

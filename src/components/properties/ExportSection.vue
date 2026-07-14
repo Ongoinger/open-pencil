@@ -2,9 +2,10 @@
 import { ref, computed, watch, onScopeDispose } from 'vue'
 
 import AppSelect from '@/components/ui/AppSelect.vue'
+import ExportScaleInput from '@/components/properties/ExportScaleInput.vue'
+import IconButton from '@/components/ui/IconButton.vue'
+import PanelSection from '@/components/ui/PanelSection.vue'
 import Tip from '@/components/ui/Tip.vue'
-import { useIconButtonUI } from '@/components/ui/icon-button'
-import { useSectionUI } from '@/components/ui/section'
 import { useEditorStore } from '@/app/editor/active-store'
 import { useExport, useI18n } from '@open-pencil/vue'
 
@@ -12,30 +13,27 @@ import type { ExportFormatId } from '@open-pencil/vue'
 
 const editorStore = useEditorStore()
 const { panels } = useI18n()
-const sectionCls = useSectionUI()
 const {
   activeTarget,
   activeName,
   activeSettings,
-  addSelectionSetting,
-  addPageSetting,
-  removeSelectionSetting,
-  removePageSetting,
-  updateSelectionScale,
-  updatePageScale,
-  updateSelectionFormat,
-  updatePageFormat,
-  formatSupportsScale
+  targetIds,
+  mixed,
+  addSetting,
+  removeSetting,
+  updateScale,
+  updateFormat,
+  formatSupportsScale,
+  scales,
+  clampExportScale
 } = useExport()
 
-const SCALE_OPTIONS = [0.5, 0.75, 1, 1.5, 2, 3, 4].map((s) => ({ value: s, label: `${s}x` }))
 const FORMAT_OPTIONS: { value: ExportFormatId; label: string }[] = [
   { value: 'png', label: 'PNG' },
   { value: 'jpg', label: 'JPG' },
   { value: 'webp', label: 'WEBP' },
   { value: 'svg', label: 'SVG' },
-  { value: 'html', label: 'HTML' },
-  { value: 'fig', label: '.fig' }
+  { value: 'pdf', label: 'PDF' }
 ]
 
 const previewUrl = ref<string | null>(null)
@@ -44,41 +42,26 @@ const exporting = ref(false)
 
 const PREVIEW_WIDTH = 480
 
-function addSetting() {
-  if (activeTarget.value === 'selection') addSelectionSetting()
-  else addPageSetting()
-}
-
-function removeSetting(index: number) {
-  if (activeTarget.value === 'selection') removeSelectionSetting(index)
-  else removePageSetting(index)
-}
-
-function updateScale(index: number, scale: number) {
-  if (activeTarget.value === 'selection') updateSelectionScale(index, scale)
-  else updatePageScale(index, scale)
-}
-
-function updateFormat(index: number, format: ExportFormatId) {
-  if (activeTarget.value === 'selection') updateSelectionFormat(index, format)
-  else updatePageFormat(index, format)
-}
-
 async function doExport() {
   exporting.value = true
   try {
-    if (activeTarget.value === 'selection') {
-      for (const s of activeSettings.value) await editorStore.exportSelection(s.scale, s.format)
-      return
+    const requests = []
+    // Export exactly the rows shown in the panel (activeSettings) for every target,
+    // so a multi-selection exports what the user sees rather than each node's own
+    // (possibly hidden / divergent) settings.
+    for (const id of targetIds.value) {
+      const node = editorStore.graph.getNode(id)
+      if (!node) continue
+      const target =
+        activeTarget.value === 'page'
+          ? ({ scope: 'page', pageId: id } as const)
+          : ({ scope: 'node', nodeId: id } as const)
+      for (const setting of activeSettings.value) {
+        requests.push({ target, formatId: setting.format, options: { scale: setting.scale } })
+      }
     }
-
-    for (const s of activeSettings.value) {
-      await editorStore.exportTarget(
-        { scope: 'page', pageId: editorStore.state.currentPageId },
-        s.format,
-        { scale: s.scale }
-      )
-    }
+    // A single file downloads directly; multiple files bundle into one zip.
+    await editorStore.exportTargets(requests)
   } finally {
     exporting.value = false
   }
@@ -130,54 +113,42 @@ onScopeDispose(() => {
 </script>
 
 <template>
-  <div data-test-id="export-section" :class="sectionCls.wrapper">
-    <div class="flex items-center justify-between">
-      <label :class="sectionCls.label">{{ panels.export }}</label>
-      <Tip :label="panels.addExport">
-        <button
-          data-test-id="export-section-add"
-          :class="useIconButtonUI().base"
-          @click="addSetting"
-        >
-          +
-        </button>
-      </Tip>
-    </div>
+  <PanelSection :label="panels.export" data-test-id="export-section">
+    <template #actions>
+      <IconButton :label="panels.addExport" data-test-id="export-section-add" @click="addSetting">
+        <icon-lucide-plus class="size-3.5" />
+      </IconButton>
+    </template>
+    <p v-if="mixed" class="text-[11px] text-muted">
+      {{ panels.mixed }}
+    </p>
 
     <div
       v-for="(setting, i) in activeSettings"
-      :key="`${activeTarget}:${i}`"
+      :key="`${targetIds.join(',')}:${i}`"
       data-test-id="export-item"
       :data-test-index="i"
       class="flex items-center gap-1.5 py-0.5"
     >
-      <AppSelect
+      <ExportScaleInput
         v-if="formatSupportsScale(setting.format)"
+        data-test-id="export-scale-input"
         :model-value="setting.scale"
-        :options="SCALE_OPTIONS"
+        :presets="scales"
+        :clamp="clampExportScale"
         :label="panels.exportScale"
-        @update:model-value="updateScale(i, Number($event))"
+        @update:model-value="updateScale(i, $event)"
       />
-      <Tip :label="panels.exportFormat">
-        <select
-          data-test-id="export-format-select"
-          :value="setting.format"
-          class="min-w-0 flex-1 cursor-pointer rounded border border-border bg-input px-1.5 py-1 text-xs text-surface outline-none hover:bg-hover"
-          @change="updateFormat(i, ($event.target as HTMLSelectElement).value as ExportFormatId)"
-        >
-          <option v-for="opt in FORMAT_OPTIONS" :key="opt.value" :value="opt.value">
-            {{ opt.label }}
-          </option>
-        </select>
-      </Tip>
-      <Tip :label="panels.removeExport">
-        <button
-          :class="useIconButtonUI({ ui: { base: 'shrink-0' } }).base"
-          @click="removeSetting(i)"
-        >
-          −
-        </button>
-      </Tip>
+      <AppSelect
+        data-test-id="app-select-trigger"
+        :model-value="setting.format"
+        :options="FORMAT_OPTIONS"
+        :label="panels.exportFormat"
+        @update:model-value="updateFormat(i, $event as ExportFormatId)"
+      />
+      <IconButton :label="panels.removeExport" class="shrink-0" @click="removeSetting(i)">
+        <icon-lucide-minus class="size-3.5" />
+      </IconButton>
     </div>
 
     <button
@@ -219,5 +190,5 @@ onScopeDispose(() => {
     >
       {{ panels.exportRenderingPreview }}
     </div>
-  </div>
+  </PanelSection>
 </template>

@@ -1,9 +1,10 @@
+import { guidToString } from '@open-pencil/kiwi/fig/guid'
+import { parseVariantName } from '@open-pencil/scene-graph/variant-name'
+
 /* eslint-disable max-lines -- kiwi↔scene conversion helpers are tightly coupled */
 import { DEFAULT_FONT_FAMILY, DEFAULT_STROKE_MITER_LIMIT } from '#core/constants'
-import { parseVariantName } from '#core/scene-graph/variant-name'
 import { styleToWeight } from '#core/text/fonts'
 
-import { guidToString } from './guid'
 import { convertEffects, convertFills, convertStrokes } from './paint'
 import { importStyleRuns } from './style-runs'
 export { importStyleRuns } from './style-runs'
@@ -15,6 +16,7 @@ export { convertEffects, convertFills, convertStrokes, setVariableColorResolver 
 export { convertLetterSpacing, convertLineHeight, mapTextDecoration } from './text-values'
 import {
   extractBoundVariables,
+  extractExportSettings,
   extractPluginData,
   extractPluginRelaunchData,
   getOpenPencilPluginValue,
@@ -25,7 +27,7 @@ import {
 import { resolveGeometryPaths, resolveVectorNetwork } from './vector-geometry'
 export { resolveGeometryPaths } from './vector-geometry'
 
-import type { NodeChange } from '#core/kiwi/fig/codec'
+import type { NodeChange } from '@open-pencil/kiwi/fig/codec'
 import type {
   SceneNode,
   NodeType,
@@ -47,31 +49,53 @@ import type {
   ComponentPropertyType,
   SymbolLink,
   VariantPropSpec
-} from '#core/scene-graph'
-import type { GUID } from '#core/types'
+} from '@open-pencil/scene-graph'
+import type { GUID } from '@open-pencil/scene-graph/primitives'
 
-export { guidToString, stringToGuid } from './guid'
+export { guidToString, stringToGuid } from '@open-pencil/kiwi/fig/guid'
 
 export const VARIABLE_BINDING_FIELDS: Record<string, string> = {
+  // Corner radius
   cornerRadius: 'CORNER_RADIUS',
   topLeftRadius: 'RECTANGLE_TOP_LEFT_CORNER_RADIUS',
   topRightRadius: 'RECTANGLE_TOP_RIGHT_CORNER_RADIUS',
   bottomLeftRadius: 'RECTANGLE_BOTTOM_LEFT_CORNER_RADIUS',
   bottomRightRadius: 'RECTANGLE_BOTTOM_RIGHT_CORNER_RADIUS',
+  // Stroke
   strokeWeight: 'STROKE_WEIGHT',
+  borderTopWeight: 'BORDER_TOP_WEIGHT',
+  borderBottomWeight: 'BORDER_BOTTOM_WEIGHT',
+  borderLeftWeight: 'BORDER_LEFT_WEIGHT',
+  borderRightWeight: 'BORDER_RIGHT_WEIGHT',
+  // Auto-layout spacing & padding
   itemSpacing: 'STACK_SPACING',
   paddingLeft: 'STACK_PADDING_LEFT',
   paddingTop: 'STACK_PADDING_TOP',
   paddingRight: 'STACK_PADDING_RIGHT',
   paddingBottom: 'STACK_PADDING_BOTTOM',
   counterAxisSpacing: 'STACK_COUNTER_SPACING',
+  // Grid gaps
+  gridRowGap: 'GRID_ROW_GAP',
+  gridColumnGap: 'GRID_COLUMN_GAP',
+  // Visibility & opacity
   visible: 'VISIBLE',
   opacity: 'OPACITY',
+  // Dimensions
   width: 'WIDTH',
   height: 'HEIGHT',
+  minWidth: 'MIN_WIDTH',
+  maxWidth: 'MAX_WIDTH',
+  minHeight: 'MIN_HEIGHT',
+  maxHeight: 'MAX_HEIGHT',
+  // Position & rotation
+  x: 'X_POSITION',
+  y: 'Y_POSITION',
+  rotation: 'ROTATION',
+  // Text
   fontSize: 'FONT_SIZE',
   letterSpacing: 'LETTER_SPACING',
-  lineHeight: 'LINE_HEIGHT'
+  lineHeight: 'LINE_HEIGHT',
+  fontFamily: 'FONT_FAMILY'
 }
 
 export const VARIABLE_BINDING_FIELDS_INVERSE: Record<string, string> = Object.fromEntries(
@@ -109,11 +133,14 @@ function mapNodeType(type?: string): NodeType | 'DOCUMENT' | 'VARIABLE' {
 
 function mapBooleanOperation(nc: NodeChange): SceneNode['booleanOperation'] {
   if (nc.type !== 'BOOLEAN_OPERATION') return undefined
-  switch (nc.booleanOperation) {
+  const operation = nc.booleanOperation as NodeChange['booleanOperation'] | 'EXCLUDE' | undefined
+  switch (operation) {
     case 'SUBTRACT':
     case 'INTERSECT':
+      return operation
     case 'EXCLUDE':
-      return nc.booleanOperation
+    case 'XOR':
+      return 'EXCLUDE'
     default:
       return 'UNION'
   }
@@ -229,17 +256,25 @@ function convertTransformProps(
     const sx = flipX ? -1 : 1
     rotation = Math.atan2(t.m10 * sx, t.m00 * sx) * (180 / Math.PI)
 
-    const corners = [
-      { x: 0, y: 0 },
-      { x: width, y: 0 },
-      { x: 0, y: height },
-      { x: width, y: height }
-    ].map((point) => ({
-      x: t.m00 * point.x + t.m01 * point.y + t.m02,
-      y: t.m10 * point.x + t.m11 * point.y + t.m12
-    }))
-    x = Math.min(...corners.map((point) => point.x))
-    y = Math.min(...corners.map((point) => point.y))
+    if (rotation !== 0 && !flipX) {
+      const radians = (rotation * Math.PI) / 180
+      const cos = Math.cos(radians)
+      const sin = Math.sin(radians)
+      x = t.m02 - (width / 2) * (1 - cos) - sin * (height / 2)
+      y = t.m12 - (height / 2) * (1 - cos) + sin * (width / 2)
+    } else {
+      const corners = [
+        { x: 0, y: 0 },
+        { x: width, y: 0 },
+        { x: 0, y: height },
+        { x: width, y: height }
+      ].map((point) => ({
+        x: t.m00 * point.x + t.m01 * point.y + t.m02,
+        y: t.m10 * point.x + t.m11 * point.y + t.m12
+      }))
+      x = Math.min(...corners.map((point) => point.x))
+      y = Math.min(...corners.map((point) => point.y))
+    }
   }
 
   return { x, y, width, height, rotation, flipX, flipY: false }
@@ -275,10 +310,7 @@ function importedTextLineHeight(nc: NodeChange): number | null {
   return convertLineHeight(nc.lineHeight, nc.fontSize)
 }
 
-function convertTextProps(
-  nc: NodeChange,
-  blobs: Uint8Array[]
-): Pick<
+type TextProps = Pick<
   SceneNode,
   | 'text'
   | 'fontSize'
@@ -290,6 +322,10 @@ function convertTextProps(
   | 'textAutoResize'
   | 'textCase'
   | 'textDecoration'
+  | 'textDecorationStyle'
+  | 'textDecorationThickness'
+  | 'textDecorationFills'
+  | 'leadingTrim'
   | 'lineHeight'
   | 'letterSpacing'
   | 'maxLines'
@@ -300,7 +336,30 @@ function convertTextProps(
   | 'textDirection'
   | 'figmaDerivedLayout'
   | 'figmaDerivedTextGlyphs'
+>
+
+function convertTextDecorationProps(
+  nc: NodeChange
+): Pick<
+  SceneNode,
+  | 'textDecoration'
+  | 'textDecorationStyle'
+  | 'textDecorationThickness'
+  | 'textDecorationFills'
+  | 'textDecorationSkipInk'
+  | 'textUnderlineOffset'
 > {
+  return {
+    textDecoration: mapTextDecoration(nc.textDecoration as string),
+    textDecorationStyle: (nc.textDecorationStyle ?? 'SOLID') as SceneNode['textDecorationStyle'],
+    textDecorationThickness: nc.textDecorationThickness?.value ?? null,
+    textDecorationFills: convertFills(nc.textDecorationFillPaints),
+    textDecorationSkipInk: nc.textDecorationSkipInk ?? true,
+    textUnderlineOffset: nc.textUnderlineOffset?.value ?? null
+  }
+}
+
+function convertTextProps(nc: NodeChange, blobs: Uint8Array[]): TextProps {
   return {
     text: nc.textData?.characters ?? '',
     fontSize: nc.fontSize ?? 14,
@@ -315,7 +374,8 @@ function convertTextProps(
     textAlignVertical: (nc.textAlignVertical ?? 'TOP') as TextAlignVertical,
     textAutoResize: (nc.textAutoResize ?? 'NONE') as TextAutoResize,
     textCase: (nc.textCase ?? 'ORIGINAL') as TextCase,
-    textDecoration: mapTextDecoration(nc.textDecoration as string),
+    ...convertTextDecorationProps(nc),
+    leadingTrim: (nc.leadingTrim ?? 'NONE') as SceneNode['leadingTrim'],
     lineHeight: importedTextLineHeight(nc),
     letterSpacing: convertLetterSpacing(nc.letterSpacing, nc.fontSize),
     maxLines: (nc.maxLines ?? null) as number | null,
@@ -461,17 +521,34 @@ function convertVectorAndStrokeProps(nc: NodeChange, blobs: Uint8Array[]) {
   }
 }
 
-export function nodeChangeToProps(
-  nc: NodeChange,
-  blobs: Uint8Array[]
-): Partial<SceneNode> & { nodeType: NodeType | 'DOCUMENT' | 'VARIABLE' } {
-  let nodeType = mapNodeType(nc.type)
+function resolveNodeType(nc: NodeChange): NodeType | 'DOCUMENT' | 'VARIABLE' {
+  const nodeType = mapNodeType(nc.type)
   if (
     (nodeType === 'FRAME' && isComponentSet(nc)) ||
     getOpenPencilPluginValue(nc, NODE_TYPE_PLUGIN_KEY) === 'COMPONENT_SET'
   ) {
-    nodeType = 'COMPONENT_SET'
+    return 'COMPONENT_SET'
   }
+  // Figma stores plain groups as FRAME node-changes flagged with resizeToFit.
+  // Auto-layout "hug" frames instead use stackPrimarySizing/stackCounterSizing and
+  // always carry a stackMode, so guard on the absence of auto-layout — a real group
+  // never has one. This keeps component-sets and auto-layout frames from being
+  // misclassified as groups.
+  if (
+    nodeType === 'FRAME' &&
+    nc.resizeToFit === true &&
+    (nc.stackMode === undefined || nc.stackMode === 'NONE')
+  ) {
+    return 'GROUP'
+  }
+  return nodeType
+}
+
+export function nodeChangeToProps(
+  nc: NodeChange,
+  blobs: Uint8Array[]
+): Partial<SceneNode> & { nodeType: NodeType | 'DOCUMENT' | 'VARIABLE' } {
+  const nodeType = resolveNodeType(nc)
 
   const vectorAndStrokeProps = convertVectorAndStrokeProps(nc, blobs)
 
@@ -505,11 +582,13 @@ export function nodeChangeToProps(
     maxWidth: (nc.maxWidth ?? null) as number | null,
     minHeight: (nc.minHeight ?? null) as number | null,
     maxHeight: (nc.maxHeight ?? null) as number | null,
-    isMask: (nc.isMask ?? false) as boolean,
+    isMask: nc.mask ?? false,
     maskType: (nc.maskType ?? 'ALPHA') as 'ALPHA' | 'VECTOR' | 'LUMINANCE',
+    maskIsOutline: nc.maskIsOutline ?? false,
     expanded: true,
     autoRename: (nc.autoRename ?? true) as boolean,
     boundVariables: extractBoundVariables(nc),
+    exportSettings: extractExportSettings(nc),
     pluginData: extractPluginData(nc),
     pluginRelaunchData: extractPluginRelaunchData(nc),
     clipsContent: nc.frameMaskDisabled === false && nc.resizeToFit !== true,

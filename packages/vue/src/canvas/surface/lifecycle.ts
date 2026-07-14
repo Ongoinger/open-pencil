@@ -74,8 +74,15 @@ export function createCanvasSurfaceManager({
     if (reloadFonts && !isDestroyed()) {
       void state.renderer.loadFonts(renderNow).then(() => {
         if (!isDestroyed()) renderNow()
+        return undefined
       })
     }
+  }
+
+  function recreateSurfaceWithFonts() {
+    const canvas = canvasRef.value
+    if (!canvas || isDestroyed()) return
+    createSurface(canvas, { reloadFonts: true })
   }
 
   function renderNow() {
@@ -130,6 +137,7 @@ export function createCanvasSurfaceManager({
 
   return {
     createSurface,
+    recreateSurfaceWithFonts,
     resizeCanvas,
     renderNow,
     destroy,
@@ -158,7 +166,7 @@ export function useCanvasSurfaceLifecycle({
     lifecycle,
     setCanvasKit,
     createSurface: surface.createSurface,
-    loadFonts: () => surface.getRenderer()?.loadFonts(surface.renderNow),
+    loadFonts: () => surface.getRenderer()?.loadFonts(surface.recreateSurfaceWithFonts),
     renderNow: surface.renderNow,
     onReady
   })

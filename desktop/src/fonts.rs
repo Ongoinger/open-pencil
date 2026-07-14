@@ -10,13 +10,64 @@ pub struct FontFamily {
 
 static FONT_CACHE: OnceLock<Vec<FontFamily>> = OnceLock::new();
 
+#[cfg(target_os = "windows")]
+fn windows_font_aliases(family: &str) -> &'static [&'static str] {
+    match family {
+        "Microsoft YaHei" => &["Microsoft YaHei UI", "Noto Sans SC", "DengXian", "SimHei"],
+        "Microsoft JhengHei" => &["Microsoft JhengHei UI", "Microsoft YaHei UI"],
+        "Yu Gothic" => &["Microsoft YaHei UI"],
+        "Malgun Gothic" => &["Microsoft YaHei UI"],
+        "SimSun" => &["NSimSun", "SimHei", "Noto Sans SC"],
+        _ => &[],
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+fn windows_font_aliases(_family: &str) -> &'static [&'static str] {
+    &[]
+}
+
+fn select_family_handle(source: &SystemSource, family: &str) -> Result<font_kit::family_handle::FamilyHandle, String> {
+    if let Ok(handle) = source.select_family_by_name(family) {
+        return Ok(handle);
+    }
+
+    for alias in windows_font_aliases(family) {
+        if let Ok(handle) = source.select_family_by_name(alias) {
+            return Ok(handle);
+        }
+    }
+
+    let requested = family.to_ascii_lowercase();
+    if let Ok(families) = source.all_families() {
+        for candidate in families {
+            let normalized = candidate.to_ascii_lowercase();
+            if normalized == requested {
+                if let Ok(handle) = source.select_family_by_name(&candidate) {
+                    return Ok(handle);
+                }
+            }
+            if normalized.starts_with(&requested)
+                || requested.starts_with(&normalized)
+                || normalized.replace(" ui", "") == requested
+            {
+                if let Ok(handle) = source.select_family_by_name(&candidate) {
+                    return Ok(handle);
+                }
+            }
+        }
+    }
+
+    Err(format!("Font family not found: {family}"))
+}
+
 fn enumerate_system_fonts() -> Vec<FontFamily> {
     let source = SystemSource::new();
     let mut families: Vec<FontFamily> = Vec::new();
 
     if let Ok(family_names) = source.all_families() {
         for name in family_names {
-            // Names only — avoid loading every font file at startup (OOM in WebView2).
+            // Names only — loading every font file at startup OOMs WebView2 on Windows.
             families.push(FontFamily {
                 family: name,
                 styles: vec!["Regular".to_string()],
@@ -43,9 +94,7 @@ pub async fn list_system_fonts() -> Vec<FontFamily> {
 
 fn load_system_font_blocking(family: String, style: String) -> Result<Vec<u8>, String> {
     let source = SystemSource::new();
-    let family_handle = source
-        .select_family_by_name(&family)
-        .map_err(|e| format!("Font family not found: {e}"))?;
+    let family_handle = select_family_handle(&source, &family)?;
 
     let is_italic = style.contains("Italic");
     let weight_str = style.replace(" Italic", "");
@@ -88,6 +137,23 @@ fn load_system_font_blocking(family: String, style: String) -> Result<Vec<u8>, S
     }
 
     Err(format!("Could not load font {family} {style}"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::windows_font_aliases;
+
+    #[test]
+    fn windows_aliases_prefer_ui_or_cjk_fallbacks() {
+        assert_eq!(
+            windows_font_aliases("Microsoft YaHei"),
+            ["Microsoft YaHei UI", "Noto Sans SC", "DengXian", "SimHei"]
+        );
+        assert_eq!(
+            windows_font_aliases("SimSun"),
+            ["NSimSun", "SimHei", "Noto Sans SC"]
+        );
+    }
 }
 
 #[tauri::command]

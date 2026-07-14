@@ -1,3 +1,7 @@
+import type { SceneNode, SceneGraph, Fill, Stroke } from '@open-pencil/scene-graph'
+import type { Color, Rect, Vector } from '@open-pencil/scene-graph/primitives'
+import type { SnapGuide } from '@open-pencil/scene-graph/snap'
+
 import type { ResolvedRenderColor } from '#core/color/management'
 /* eslint-disable max-lines -- SkiaRenderer facade owns CanvasKit state and delegates domain drawing */
 import {
@@ -12,10 +16,7 @@ import {
 } from '#core/constants'
 import type { EditorState } from '#core/editor/types'
 import { RenderProfiler } from '#core/profiler'
-import type { SceneNode, SceneGraph, Fill, Stroke } from '#core/scene-graph'
-import type { SnapGuide } from '#core/scene-graph/snap'
 import type { TextEditor } from '#core/text/editor'
-import type { Color, Rect, Vector } from '#core/types'
 
 import { LabelCache } from './labels/cache'
 import * as LabelHitTest from './labels/hit-test'
@@ -568,6 +569,10 @@ export class SkiaRenderer {
     return RenderText.isNodeFontLoaded(this, node)
   }
 
+  isNodeBaseFontLoaded(node: SceneNode): boolean {
+    return RenderText.isNodeBaseFontLoaded(this, node)
+  }
+
   buildTextPicture(node: SceneNode): Uint8Array | null {
     return RenderText.buildTextPicture(this, node)
   }
@@ -615,6 +620,46 @@ export class SkiaRenderer {
     return {
       x: (sx - this.panX) / this.zoom,
       y: (sy - this.panY) / this.zoom
+    }
+  }
+
+  /**
+   * Browser fallback for raster formats CanvasKit cannot encode itself
+   * (this build returns null from `encodeToBytes` for JPEG/WEBP). Routes the
+   * RGBA pixels through an HTMLCanvasElement so `toDataURL` does the encoding.
+   * Returns null outside the browser or if encoding fails.
+   */
+  encodeRasterFallback(
+    pixels: Uint8Array,
+    width: number,
+    height: number,
+    format: 'JPG' | 'WEBP',
+    quality: number
+  ): Uint8Array | null {
+    if (!IS_BROWSER) return null
+    try {
+      const canvas = document.createElement('canvas')
+      canvas.width = width
+      canvas.height = height
+      const ctx = canvas.getContext('2d')
+      if (!ctx) return null
+      const imageData = ctx.createImageData(width, height)
+      imageData.data.set(pixels)
+      ctx.putImageData(imageData, 0, 0)
+      const mime = format === 'JPG' ? 'image/jpeg' : 'image/webp'
+      const dataUrl = canvas.toDataURL(mime, quality / 100)
+      // Browsers silently return a PNG data URL when the requested encoder is
+      // unsupported; reject that so we never write PNG bytes under a .jpg/.webp file.
+      if (!dataUrl.startsWith(`data:${mime}`)) return null
+      const base64 = dataUrl.split(',')[1]
+      if (!base64) return null
+      const binary = atob(base64)
+      const bytes = new Uint8Array(binary.length)
+      for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
+      return bytes
+    } catch (err) {
+      console.warn('Raster encode fallback failed:', err)
+      return null
     }
   }
 

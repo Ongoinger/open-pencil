@@ -2,9 +2,10 @@ import { shallowRef, computed, triggerRef } from 'vue'
 
 import { BUILTIN_IO_FORMATS, IORegistry } from '@open-pencil/core/io'
 import { readFigFile } from '@open-pencil/core/io/formats/fig'
-import { computeAllLayouts } from '@open-pencil/core/layout'
-import type { SceneGraph } from '@open-pencil/core/scene-graph'
+import type { SceneGraph } from '@open-pencil/scene-graph'
 
+import { applyImportedDocument } from '@/app/document/io/imported-document'
+import { ensureLocalDraftHistoryLoaded } from '@/app/document/history/store'
 import { setOpenPencilStore } from '@/app/browser-bridge'
 import { setActiveEditorStore } from '@/app/editor/active-store'
 import { createEditorStore } from '@/app/editor/session'
@@ -73,7 +74,7 @@ export function closeTab(tabId: string) {
 
   if (tabsRef.value.length === 0) {
     createTab()
-    closingTab.store.dispose()
+    void closingTab.store.dispose()
     return
   }
 
@@ -82,13 +83,17 @@ export function closeTab(tabId: string) {
     activateTab(tabsRef.value[newIdx])
   }
 
-  closingTab.store.dispose()
+  void closingTab.store.dispose()
 }
 
 function yieldToUI(): Promise<void> {
   return new Promise((resolve) => {
     requestAnimationFrame(() => resolve())
   })
+}
+
+function isDOMImportFile(file: File): boolean {
+  return /\.(html?|xhtml)$/i.test(file.name)
 }
 
 export async function openFileInNewTab(
@@ -100,6 +105,11 @@ export async function openFileInNewTab(
   const isUntouched =
     current?.store.state.documentName === 'Untitled' && !current.store.undo.canUndo
   const store = isUntouched ? current.store : createTab().store
+  if (isDOMImportFile(file)) {
+    await store.openDOMFile(file, { handle, path })
+    return
+  }
+
   const documentName = file.name.replace(/\.[^.]+$/i, '')
 
   store.state.documentName = documentName
@@ -116,22 +126,42 @@ export async function openFileInNewTab(
           data: new Uint8Array(await file.arrayBuffer())
         })
 
-    const firstPageId = imported.getPages()[0]?.id
-    if (firstPageId) computeAllLayouts(imported, firstPageId)
-    store.replaceGraph(imported)
-    store.undo.clear()
+    await applyImportedDocument(store, imported)
     store.setDocumentSource(file.name, sourceFormat, handle, path)
-    store.clearSelection()
-    const pageId = store.graph.getPages()[0]?.id ?? store.graph.rootId
-    await store.switchPage(pageId)
     await store.fitCurrentPageToViewport()
   } finally {
     store.state.loading = false
   }
 }
 
+export async function openLocalDraftInNewTab(draftId: string): Promise<void> {
+  const current = activeTab.value
+  const isUntouched =
+    current?.store.state.documentName === 'Untitled' && !current.store.undo.canUndo
+  const store = isUntouched ? current.store : createTab().store
+  await store.openLocalDraft(draftId)
+}
+
+export async function deleteLocalDraftEntry(draftId: string): Promise<void> {
+  await ensureLocalDraftHistoryLoaded()
+  for (const tab of tabsRef.value) {
+    if (tab.store.state.currentDraftId === draftId) {
+      await tab.store.deleteLocalDraft(draftId)
+      return
+    }
+  }
+  const store = activeTab.value?.store
+  if (store) {
+    await store.deleteLocalDraft(draftId)
+  }
+}
+
 export function tabCount(): number {
   return tabsRef.value.length
+}
+
+export async function saveAllOpenDrafts(): Promise<void> {
+  await Promise.allSettled(tabsRef.value.map((tab) => tab.store.saveCurrentDraft()))
 }
 
 export function useTabsStore() {
@@ -142,6 +172,9 @@ export function useTabsStore() {
     switchTab,
     closeTab,
     openFileInNewTab,
+    openLocalDraftInNewTab,
+    deleteLocalDraftEntry,
+    saveAllOpenDrafts,
     getActiveStore,
     tabCount
   }

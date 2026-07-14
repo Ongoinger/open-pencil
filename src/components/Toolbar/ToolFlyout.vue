@@ -65,7 +65,7 @@ function activeKeyForTool() {
   <div class="flex items-center">
     <slot :label="`${toolLabels[activeKeyForTool()]} (${tool.shortcut})`">
       <ToolButton
-        :test-id="toolbarToolTestId(activeKeyForTool(), mobile)"
+        :data-test-id="toolbarToolTestId(activeKeyForTool(), mobile)"
         :icon="toolIcons[activeKeyForTool()]"
         :active="isActiveTool(activeKeyForTool())"
         :mobile="mobile"
@@ -92,7 +92,12 @@ function activeKeyForTool() {
       </DropdownMenuTrigger>
 
       <DropdownMenuPortal>
-        <DropdownMenuContent side="top" :side-offset="8" align="start" :class="ui?.flyoutContent">
+        <DropdownMenuContent
+          :side="mobile ? 'top' : 'bottom'"
+          :side-offset="8"
+          align="start"
+          :class="ui?.flyoutContent"
+        >
           <ToolbarItem
             v-for="sub in tool.flyout"
             :key="sub"

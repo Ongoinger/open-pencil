@@ -2,6 +2,7 @@ import type { Editor, EditorState } from '@open-pencil/core/editor'
 import { exportFigFile } from '@open-pencil/core/io/formats/fig'
 
 import { createAutosave } from '@/app/document/autosave'
+import { createLocalDraftActions } from '@/app/document/history/create'
 import {
   documentNameFromFigPath,
   downloadNameFromPath,
@@ -13,6 +14,8 @@ import { createDocumentSourceState } from '@/app/document/io/source-state'
 type DocumentSourceState = EditorState & {
   documentName: string
   autosaveEnabled: boolean
+  currentDraftId: string | null
+  loading: boolean
 }
 
 export { createDocumentSourceState }
@@ -32,6 +35,7 @@ type DocumentSourceOptions = {
   setSavedVersion: (version: number) => void
   setLastWriteTime: (time: number) => void
   getRenderer: () => Editor['renderer']
+  fitCurrentPageToViewport: () => Promise<void>
 }
 
 export function createDocumentSourceActions({
@@ -48,7 +52,8 @@ export function createDocumentSourceActions({
   getSavedVersion,
   setSavedVersion,
   setLastWriteTime,
-  getRenderer
+  getRenderer,
+  fitCurrentPageToViewport
 }: DocumentSourceOptions) {
   function buildFigFile() {
     return exportFigFile(editor.graph, undefined, getRenderer() ?? undefined, state.currentPageId)
@@ -76,6 +81,29 @@ export function createDocumentSourceActions({
     hasWritableSource: () => !!getFileHandle() || !!getFilePath(),
     saveCurrentDocument: async () => writeFile(await buildFigFile())
   })
+
+  const {
+    saveCurrentDraft,
+    openLocalDraft,
+    restoreLatestLocalDraft,
+    deleteLocalDraft,
+    disposeLocalDrafts
+  } = createLocalDraftActions({
+    editor,
+    state,
+    buildFigFile,
+    clearDocumentSource,
+    fitCurrentPageToViewport
+  })
+
+  function clearDocumentSource() {
+    stopWatchingFile()
+    setFileHandle(null)
+    setFilePath(null)
+    setDownloadName(null)
+    setSavedVersion(0)
+    setLastWriteTime(0)
+  }
 
   function setDocumentSource(
     fileName: string,
@@ -110,14 +138,20 @@ export function createDocumentSourceActions({
   function disposeDocumentIO() {
     stopWatchingFile()
     disposeAutosave()
+    void disposeLocalDrafts().catch((error) => console.warn('Local draft dispose failed:', error))
   }
 
   return {
     setDocumentSource,
+    clearDocumentSource,
     setPlannedFilePath,
     startWatchingCurrentFile,
     disposeDocumentIO,
     saveFigFile,
-    saveFigFileAs
+    saveFigFileAs,
+    saveCurrentDraft,
+    openLocalDraft,
+    restoreLatestLocalDraft,
+    deleteLocalDraft
   }
 }

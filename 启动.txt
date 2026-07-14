@@ -1,0 +1,2 @@
+bun run build:packages
+bun run dev

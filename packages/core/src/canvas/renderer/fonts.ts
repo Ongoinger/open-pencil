@@ -1,3 +1,5 @@
+import type { SceneGraph } from '@open-pencil/scene-graph'
+
 import type { SkiaRenderer } from '#core/canvas/renderer'
 import {
   COMPONENT_LABEL_FONT_SIZE,
@@ -7,11 +9,18 @@ import {
   SECTION_TITLE_FONT_SIZE,
   SIZE_FONT_SIZE
 } from '#core/constants'
-import type { SceneGraph } from '#core/scene-graph'
 import { fontManager } from '#core/text/fonts'
 
 export function getFontProvider(r: SkiaRenderer) {
   return r.isDestroyed() || !r.fontProvider ? null : r.fontProvider
+}
+
+function rebuildFontProvider(r: SkiaRenderer): void {
+  if (r.isDestroyed()) return
+  r.fontProvider?.delete()
+  const provider = r.ck.TypefaceFontProvider.Make()
+  r.fontProvider = provider
+  fontManager.attachProvider(r.ck, provider)
 }
 
 export async function loadFonts(
@@ -19,15 +28,14 @@ export async function loadFonts(
   onFallbackFontsLoaded?: () => void
 ): Promise<void> {
   if (r.isDestroyed()) return
-  r.fontProvider?.delete()
-  r.fontProvider = r.ck.TypefaceFontProvider.Make()
-
-  fontManager.attachProvider(r.ck, r.fontProvider)
+  rebuildFontProvider(r)
+  const provider = r.fontProvider
+  if (!provider) return
 
   const fontData = await fontManager.loadFont(DEFAULT_FONT_FAMILY, 'Regular')
   if (r.isDestroyed()) return
   if (fontData) {
-    r.fontProvider.registerFont(fontData, DEFAULT_FONT_FAMILY)
+    provider.registerFont(fontData, DEFAULT_FONT_FAMILY)
     const typeface = r.ck.Typeface.MakeFreeTypeFaceFromData(fontData)
     if (typeface) {
       r.textFont?.delete()
@@ -48,17 +56,23 @@ export async function loadFonts(
   r.fontsLoaded = true
   r.invalidateAllPictures()
 
+  const hadCJKFallback = fontManager.getCJKFallbackFamilies().length > 0
   void fontManager.ensureCJKFallback().then((families) => {
     if (!r.isDestroyed() && families.length > 0) {
+      rebuildFontProvider(r)
       r.invalidateAllPictures()
-      onFallbackFontsLoaded?.()
+      if (!hadCJKFallback) onFallbackFontsLoaded?.()
     }
+    return undefined
   })
+  const hadArabicFallback = fontManager.getArabicFallbackFamilies().length > 0
   void fontManager.ensureArabicFallback().then((families) => {
     if (!r.isDestroyed() && families.length > 0) {
+      rebuildFontProvider(r)
       r.invalidateAllPictures()
-      onFallbackFontsLoaded?.()
+      if (!hadArabicFallback) onFallbackFontsLoaded?.()
     }
+    return undefined
   })
 }
 

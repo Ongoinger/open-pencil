@@ -31,10 +31,10 @@ function activeKeyForTool(tool: EditorToolDef) {
 </script>
 
 <template>
-  <div class="absolute bottom-4 left-1/2 z-10 flex -translate-x-1/2 items-center">
+  <div class="absolute top-4 left-1/2 z-30 flex -translate-x-1/2 items-start">
     <div
       data-test-id="toolbar"
-      class="flex gap-0.5 rounded-xl border border-border bg-panel p-1 shadow-lg"
+      class="flex items-center gap-1 rounded-full border border-[#d8cab6] bg-[#fffaf2]/92 p-1.5 shadow-[0_18px_40px_rgb(120_93_63/0.15)] backdrop-blur"
     >
       <template v-for="tool in tools" :key="tool.key">
         <Tip
@@ -55,7 +55,7 @@ function activeKeyForTool(tool: EditorToolDef) {
         <ToolbarItem v-else v-slot="{ active, actions }" :tool="tool.key">
           <Tip :label="`${toolLabels[tool.key]} (${tool.shortcut})`">
             <ToolButton
-              :test-id="toolbarToolTestId(tool.key)"
+              :data-test-id="toolbarToolTestId(tool.key)"
               :icon="toolIcons[tool.key]"
               :active="active || isActive(tool)"
               @click="actions.select"

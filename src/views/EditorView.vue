@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, provide, ref } from 'vue'
+import { computed, onMounted, onUnmounted, provide, ref } from 'vue'
 import { useEventListener, useUrlSearchParams } from '@vueuse/core'
 import { useRoute } from 'vue-router'
 import { useHead } from '@unhead/vue'
@@ -16,9 +16,8 @@ import { isTauri } from '@/app/tauri/env'
 import { appMenuShortcut } from '@/app/shell/menu/shortcut'
 import { createDemoShapes } from '@/app/demo/document'
 import { useEditorStore } from '@/app/editor/active-store'
-import { createTab, activeTab, getActiveStore, tabCount } from '@/app/tabs'
+import { createTab, activeTab, getActiveStore, saveAllOpenDrafts, tabCount } from '@/app/tabs'
 
-import CollabPanel from '@/components/CollabPanel/CollabPanel.vue'
 import EditorCanvas from '@/components/EditorCanvas.vue'
 import LayersPanel from '@/components/LayersPanel.vue'
 import MobileDrawer from '@/components/MobileDrawer.vue'
@@ -36,8 +35,11 @@ const showChrome = !('no-chrome' in params)
 const createdInitialTab = tabCount() === 0
 const firstTab = createdInitialTab ? createTab() : (activeTab.value ?? createTab())
 const store = useEditorStore()
-const { dialogs } = useI18n()
+const { dialogs, panels } = useI18n()
 const { isMobile } = useViewportKind()
+const showEditorChrome = computed(
+  () => !store.state.prototypePreview && showChrome && store.state.showUI
+)
 
 if (createdInitialTab && route.meta.demo && !('test' in params)) {
   createDemoShapes(firstTab.store)
@@ -58,6 +60,16 @@ useEventListener(
   },
   { passive: false }
 )
+
+useEventListener(document, 'visibilitychange', () => {
+  if (document.visibilityState === 'hidden') {
+    void saveAllOpenDrafts()
+  }
+})
+
+useEventListener(window, 'pagehide', () => {
+  void saveAllOpenDrafts()
+})
 
 const automationCleanup = ref<(() => void) | null>(null)
 const mcpCleanup = ref<(() => void) | null>(null)
@@ -86,27 +98,30 @@ async function bindAssociatedFileOpen() {
 }
 
 onMounted(async () => {
+  if (createdInitialTab && !route.meta.demo && !('test' in params)) {
+    try {
+      await store.restoreLatestLocalDraft()
+    } catch (e) {
+      console.warn('[Local Draft Restore]', e)
+    }
+  }
+
+  try {
+    const mcp = await spawnMCPIfNeeded()
+    mcpCleanup.value = mcp?.disconnect ?? null
+    const tauri = isTauri()
+    if (import.meta.env.DEV || tauri) {
+      automationCleanup.value = connectAutomation(getActiveStore, mcp?.authToken ?? null).disconnect
+    }
+  } catch (e) {
+    console.warn('[MCP]', e)
+  }
+
   try {
     await bindAssociatedFileOpen()
   } catch (e) {
     console.error('[Open With]', e)
   }
-
-  // Defer MCP until the editor UI is up (reduces startup memory spike on WebView2).
-  window.setTimeout(() => {
-    void (async () => {
-      try {
-        const mcp = await spawnMCPIfNeeded()
-        mcpCleanup.value = mcp?.disconnect ?? null
-        const tauri = isTauri()
-        if (import.meta.env.DEV || tauri) {
-          automationCleanup.value = connectAutomation(getActiveStore, mcp?.authToken ?? null).disconnect
-        }
-      } catch (e) {
-        console.warn('[MCP]', e)
-      }
-    })()
-  }, 3000)
 })
 
 onUnmounted(() => {
@@ -121,57 +136,92 @@ onUnmounted(() => {
     <SafariBanner />
     <TabBar />
 
-    <!-- Desktop layout -->
     <SplitterGroup
-      v-if="!isMobile && showChrome && store.state.showUI"
+      v-if="!isMobile && showEditorChrome"
       :key="activeTab?.id"
       direction="horizontal"
-      class="flex-1 overflow-hidden"
+      class="flex flex-1 gap-3 overflow-hidden px-4 pb-4 pt-3"
       @layout="saveEditorLayout"
     >
       <SplitterPanel
         id="layers"
         :default-size="initialEditorLayout[0]"
-        :min-size="10"
-        :max-size="30"
-        class="flex"
+        :min-size="11"
+        :max-size="28"
+        class="flex min-w-0"
       >
-        <LayersPanel />
+        <div class="flex min-w-0 flex-1 overflow-hidden rounded-[24px] border border-white/55 bg-panel/94 shadow-[0_14px_40px_rgb(91_61_32/0.10)] backdrop-blur">
+          <LayersPanel />
+        </div>
       </SplitterPanel>
+
       <SplitterResizeHandle
         data-test-id="left-splitter-handle"
-        class="group relative z-10 -mx-1 w-2 cursor-col-resize"
+        class="group relative z-10 w-2.5 cursor-col-resize"
       >
-        <div class="pointer-events-none absolute inset-y-0 left-1/2 w-px -translate-x-1/2" />
+        <div class="pointer-events-none absolute inset-y-8 left-1/2 w-px -translate-x-1/2 bg-border/80" />
       </SplitterResizeHandle>
-      <SplitterPanel id="canvas" :default-size="initialEditorLayout[1]" :min-size="30" class="flex">
-        <div class="relative flex min-w-0 flex-1">
-          <EditorCanvas />
+
+      <SplitterPanel
+        id="canvas"
+        :default-size="initialEditorLayout[1]"
+        :min-size="36"
+        class="flex min-w-0"
+      >
+        <div class="relative flex min-w-0 flex-1 overflow-hidden rounded-[30px] border border-white/60 bg-[#fbf6ee]/96 shadow-[0_18px_55px_rgb(91_61_32/0.12)] backdrop-blur">
+          <div class="absolute inset-x-0 top-0 z-20 flex h-14 items-center justify-between border-b border-[#dccfbc] bg-[#fffaf1]/92 px-5 backdrop-blur">
+            <div class="flex min-w-0 items-center gap-3">
+              <div class="rounded-full bg-accent/10 px-3 py-1 text-[11px] font-medium text-accent">
+                {{ panels.design }}
+              </div>
+              <div class="min-w-0">
+                <div class="truncate text-sm font-semibold text-surface">
+                  {{ store.state.documentName }}
+                </div>
+              </div>
+            </div>
+            <div class="flex items-center gap-2 text-[11px] text-muted">
+              <button
+                class="cursor-pointer rounded-full bg-accent/10 px-3 py-1 font-medium text-accent transition-colors hover:bg-accent/20"
+                @click="store.state.prototypePreview = true"
+              >
+                预览
+              </button>
+              <span class="rounded-full bg-[#efe4d5] px-2.5 py-1">{{ panels.pages }}</span>
+              <span class="rounded-full bg-[#efe4d5] px-2.5 py-1">{{ panels.layers }}</span>
+              <span class="rounded-full bg-[#efe4d5] px-2.5 py-1">{{ panels.properties }}</span>
+            </div>
+          </div>
+
+          <div class="relative mt-14 flex min-w-0 flex-1 p-3">
+            <div class="relative flex min-w-0 flex-1 overflow-hidden rounded-[20px] bg-white">
+              <EditorCanvas />
+            </div>
+          </div>
+
           <Toolbar />
         </div>
       </SplitterPanel>
-      <SplitterResizeHandle class="group relative z-10 -mx-1 w-2 cursor-col-resize">
-        <div class="pointer-events-none absolute inset-y-0 left-1/2 w-px -translate-x-1/2" />
+
+      <SplitterResizeHandle class="group relative z-10 w-2.5 cursor-col-resize">
+        <div class="pointer-events-none absolute inset-y-8 left-1/2 w-px -translate-x-1/2 bg-border/80" />
       </SplitterResizeHandle>
+
       <SplitterPanel
         id="properties"
         :default-size="initialEditorLayout[2]"
-        :min-size="10"
+        :min-size="11"
         :max-size="30"
-        class="flex flex-col"
+        class="flex min-w-0 flex-col"
       >
-        <div
-          class="flex shrink-0 items-center justify-between border-b border-border px-1.5 py-1.5"
-        >
-          <CollabPanel />
+        <div class="flex min-w-0 flex-1 overflow-hidden rounded-[24px] border border-white/55 bg-panel/94 shadow-[0_14px_40px_rgb(91_61_32/0.10)] backdrop-blur">
+          <PropertiesPanel />
         </div>
-        <PropertiesPanel />
       </SplitterPanel>
     </SplitterGroup>
 
-    <!-- Mobile layout -->
     <div
-      v-else-if="isMobile && showChrome && store.state.showUI"
+      v-else-if="isMobile && showEditorChrome"
       :key="'mobile-' + activeTab?.id"
       class="flex flex-1 overflow-hidden"
     >
@@ -183,7 +233,28 @@ onUnmounted(() => {
       <MobileDrawer />
     </div>
 
-    <!-- Collapsed UI (showUI=false) -->
+    <div
+      v-else-if="showChrome && store.state.prototypePreview"
+      :key="'preview-' + activeTab?.id"
+      class="flex flex-1 overflow-hidden"
+    >
+      <div class="relative flex min-w-0 flex-1">
+        <EditorCanvas />
+        <div
+          class="absolute top-6 left-6 z-20 flex items-center gap-3 rounded-full border border-white/70 bg-[#fffaf2]/94 px-4 py-2 text-sm text-surface shadow-[0_12px_30px_rgb(91_61_32/0.12)] backdrop-blur"
+        >
+          <div class="font-semibold">原型预览</div>
+          <div class="max-w-[220px] truncate text-xs text-muted">{{ store.state.documentName }}</div>
+          <button
+            class="cursor-pointer rounded-full bg-accent/10 px-3 py-1 text-xs font-medium text-accent transition-colors hover:bg-accent/20"
+            @click="store.state.prototypePreview = false"
+          >
+            退出预览
+          </button>
+        </div>
+      </div>
+    </div>
+
     <div
       v-else-if="showChrome"
       :key="'collapsed-' + activeTab?.id"
@@ -216,7 +287,6 @@ onUnmounted(() => {
       </div>
     </div>
 
-    <!-- Bare canvas (no chrome, e.g. ?no-chrome) -->
     <div v-else :key="'bare-' + activeTab?.id" class="flex flex-1 overflow-hidden">
       <div class="relative flex min-w-0 flex-1">
         <EditorCanvas />

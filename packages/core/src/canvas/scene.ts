@@ -1,14 +1,17 @@
 /* eslint-disable max-lines -- scene dispatch stays together while shape domains live in sibling modules */
 import type { Canvas, Path } from 'canvaskit-wasm'
 
+import type { SceneNode, SceneGraph, Fill } from '@open-pencil/scene-graph'
+import { computeDescendantVisualBounds } from '@open-pencil/scene-graph/geometry'
+import type { Color } from '@open-pencil/scene-graph/primitives'
+
 import { DROP_HIGHLIGHT_ALPHA, DROP_HIGHLIGHT_STROKE, SECTION_CORNER_RADIUS } from '#core/constants'
-import { computeDescendantVisualBounds } from '#core/geometry'
-import type { SceneNode, SceneGraph, Fill } from '#core/scene-graph'
-import type { Color } from '#core/types'
+import { textNeededFallbackScripts } from '#core/text/coverage'
 import { vectorNetworkToCenterlinePath } from '#core/vector'
 
 import { figmaBlendModeToSkia, needsIsolatedBlendLayer } from './blend'
 import { renderBooleanOperation } from './boolean'
+import { drawLayoutGrids } from './layout-grids'
 import { renderMaskedChildIds } from './masks'
 import type { SkiaRenderer, RenderOverlays } from './renderer'
 import { makeSmoothRRectPath, nodeHasRadius, nodeHasSmoothCorners } from './shapes'
@@ -19,6 +22,7 @@ import {
   getStrokeJoinEntity
 } from './strokes'
 import { drawFigmaDerivedText } from './text-derived'
+import { textNodeToOutlinePath } from './text-outlines'
 
 function drawVisibleFills(
   r: SkiaRenderer,
@@ -250,6 +254,7 @@ export function renderNode(
 
   applyNodeTransforms(r, canvas, node, nodeId, overlays)
   renderNodeContent(r, canvas, graph, node, nodeId, overlays)
+  drawLayoutGrids(r, canvas, node)
   renderChildren(r, canvas, graph, node, overlays, absX, absY)
 
   if (layerBlur) {
@@ -590,6 +595,18 @@ function isGradientFill(fill?: Fill): boolean {
   return fill?.type.startsWith('GRADIENT') === true
 }
 
+function shouldRenderTextAsOutline(fill?: Fill): boolean {
+  return fill !== undefined && fill.type !== 'SOLID'
+}
+
+function drawOutlinedText(r: SkiaRenderer, canvas: Canvas, node: SceneNode): boolean {
+  const path = textNodeToOutlinePath(r, node)
+  if (!path) return false
+  canvas.drawPath(path, r.fillPaint)
+  path.delete()
+  return true
+}
+
 function drawGradientText(
   r: SkiaRenderer,
   canvas: Canvas,
@@ -632,7 +649,10 @@ export function renderText(r: SkiaRenderer, canvas: Canvas, node: SceneNode, fil
   }
 
   const paragraphY = 0
-  if (node.textPicture) {
+  const shouldPreferLiveParagraph =
+    textNeededFallbackScripts(node).length > 0 && r.isNodeFontLoaded(node)
+
+  if (node.textPicture && !shouldPreferLiveParagraph) {
     const pic = r.ck.MakePicture(node.textPicture)
     if (pic) {
       canvas.drawPicture(pic)
@@ -646,7 +666,11 @@ export function renderText(r: SkiaRenderer, canvas: Canvas, node: SceneNode, fil
     return
   }
 
-  if (!r.isNodeFontLoaded(node)) {
+  if (!r.isNodeBaseFontLoaded(node)) {
+    canvas.restore()
+    return
+  }
+  if (shouldRenderTextAsOutline(fill) && drawOutlinedText(r, canvas, node)) {
     canvas.restore()
     return
   }

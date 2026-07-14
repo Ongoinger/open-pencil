@@ -8,11 +8,13 @@ import type {
 } from 'canvaskit-wasm'
 import { uniq } from 'es-toolkit/array'
 
+import type { NodeChange } from '@open-pencil/kiwi/fig/codec'
+import type { SceneNode } from '@open-pencil/scene-graph'
+
 import { getCanvasKit } from '#core/canvaskit'
 import { resolveRGBAForPreview } from '#core/color/management'
 import { DEFAULT_FONT_FAMILY, DEFAULT_FONT_SIZE } from '#core/constants'
-import type { NodeChange } from '#core/kiwi/fig/codec'
-import type { SceneNode } from '#core/scene-graph'
+import { textNeededFallbackScripts } from '#core/text/coverage'
 import { resolveNodeTextDirection } from '#core/text/direction'
 import { fontManager, weightToStyle } from '#core/text/fonts'
 
@@ -40,18 +42,18 @@ export interface ClipboardShapedText {
   logicalIndexToCharacterOffsetMap: number[]
 }
 
-const CJK_RE = /[\u3040-\u30ff\u3400-\u9fff\uf900-\ufaff\uac00-\ud7af]/u
-const ARABIC_RE = /[\u0600-\u06ff\u0750-\u077f\u08a0-\u08ff\ufb50-\ufdff\ufe70-\ufeff]/u
 const FONT_FAMILY_CACHE_LIMIT = 256
 const fontFamilyCache = new Map<string, string[]>()
 
-function hasRequiredFallbackFonts(text: string): boolean {
-  if (CJK_RE.test(text) && fontManager.getCJKFallbackFamilies().length === 0) return false
-  if (ARABIC_RE.test(text) && fontManager.getArabicFallbackFamilies().length === 0) return false
+function hasRequiredFallbackFonts(node: SceneNode): boolean {
+  for (const script of textNeededFallbackScripts(node)) {
+    if (script === 'arabic' && fontManager.getArabicFallbackFamilies().length === 0) return false
+    if (script !== 'arabic' && fontManager.getCJKFallbackFamilies().length === 0) return false
+  }
   return true
 }
 
-export function isNodeFontLoaded(_r: TextRenderer, node: SceneNode): boolean {
+export function isNodeBaseFontLoaded(_r: TextRenderer, node: SceneNode): boolean {
   const baseFamily = node.fontFamily || DEFAULT_FONT_FAMILY
   if (!fontManager.isStyleLoaded(baseFamily, weightToStyle(node.fontWeight, node.italic))) {
     return false
@@ -64,7 +66,12 @@ export function isNodeFontLoaded(_r: TextRenderer, node: SceneNode): boolean {
     if (!fontManager.isStyleLoaded(family, weightToStyle(weight, italic))) return false
   }
 
-  return hasRequiredFallbackFonts(node.text)
+  return true
+}
+
+export function isNodeFontLoaded(r: TextRenderer, node: SceneNode): boolean {
+  if (!isNodeBaseFontLoaded(r, node)) return false
+  return hasRequiredFallbackFonts(node)
 }
 
 export function measureTextNode(
@@ -195,6 +202,38 @@ function textDecorationValue(ck: CanvasKit, decoration: string): number {
   }
 }
 
+export function textDecorationStyleValue<T>(
+  ck: { DecorationStyle: { Solid: T; Dotted: T; Wavy: T } },
+  style: SceneNode['textDecorationStyle'] | undefined
+): T {
+  switch (style) {
+    case 'DOTTED':
+      return ck.DecorationStyle.Dotted
+    case 'WAVY':
+      return ck.DecorationStyle.Wavy
+    default:
+      return ck.DecorationStyle.Solid
+  }
+}
+
+export function textHeightBehaviorValue<T>(
+  ck: { TextHeightBehavior: { DisableAll: T } },
+  leadingTrim: SceneNode['leadingTrim']
+): T | undefined {
+  return leadingTrim === 'CAP_HEIGHT' ? ck.TextHeightBehavior.DisableAll : undefined
+}
+
+function textDecorationColor(
+  ck: CanvasKit,
+  fills: SceneNode['textDecorationFills'] | undefined,
+  fallback: Float32Array
+): Float32Array {
+  const fill = fills?.find((item) => item.visible && item.type === 'SOLID')
+  if (!fill) return fallback
+  const color = resolveRGBAForPreview(fill.color).color
+  return ck.Color4f(color.r, color.g, color.b, color.a * fill.opacity)
+}
+
 function styleRunColor(
   ck: CanvasKit,
   style: SceneNode['styleRuns'][number]['style'],
@@ -238,6 +277,17 @@ function pushStyleRun(
       fontFeatures: textFontFeatures(style.fontFeatures ?? node.fontFeatures),
       letterSpacing: style.letterSpacing ?? (node.letterSpacing || 0),
       decoration: textDecorationValue(ck, style.textDecoration ?? node.textDecoration),
+      decorationStyle: textDecorationStyleValue(
+        ck,
+        style.textDecorationStyle ?? node.textDecorationStyle
+      ),
+      decorationThickness:
+        style.textDecorationThickness ?? node.textDecorationThickness ?? undefined,
+      decorationColor: textDecorationColor(
+        ck,
+        style.textDecorationFills ?? node.textDecorationFills,
+        baseColor
+      ),
       heightMultiplier: runLineHeight ? runLineHeight / runFontSize : undefined,
       halfLeading
     })
@@ -293,6 +343,7 @@ export function buildParagraph(
   const paraStyle = new ck.ParagraphStyle({
     textAlign: getParagraphTextAlign(ck, node),
     textDirection: textDirection === 'RTL' ? ck.TextDirection.RTL : ck.TextDirection.LTR,
+    textHeightBehavior: textHeightBehaviorValue(ck, node.leadingTrim),
     ...truncateOpts,
     textStyle: {
       color: baseColor,
@@ -310,6 +361,9 @@ export function buildParagraph(
       fontFeatures: textFontFeatures(node.fontFeatures),
       letterSpacing: node.letterSpacing || 0,
       decoration: textDecorationValue(ck, node.textDecoration),
+      decorationStyle: textDecorationStyleValue(ck, node.textDecorationStyle),
+      decorationThickness: node.textDecorationThickness ?? undefined,
+      decorationColor: textDecorationColor(ck, node.textDecorationFills, baseColor),
       heightMultiplier: node.lineHeight ? node.lineHeight / baseFontSize : undefined,
       halfLeading
     }

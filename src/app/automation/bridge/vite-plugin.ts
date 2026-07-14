@@ -1,26 +1,39 @@
 import { spawn } from 'node:child_process'
+import process from 'node:process'
 
 import type { Plugin } from 'vite'
 
 // TODO: production — bundle MCP server as Tauri sidecar or spawn via shell plugin
 export function automationPlugin(authToken: string | null, corsOrigin: string): Plugin {
   let child: ReturnType<typeof spawn> | null = null
+  const isWindows = process.platform === 'win32'
 
   return {
     name: 'open-pencil-automation',
     configureServer() {
       if (child) return
 
-      child = spawn('bun', ['run', 'packages/mcp/src/index.ts'], {
-        stdio: ['ignore', 'inherit', 'pipe'],
-        env: {
-          ...process.env,
-          PORT: '7600',
-          WS_PORT: '7601',
-          ...(authToken ? { OPENPENCIL_MCP_AUTH_TOKEN: authToken } : {}),
-          OPENPENCIL_MCP_CORS_ORIGIN: corsOrigin
-        }
-      })
+      child = isWindows
+        ? spawn('cmd.exe', ['/d', '/s', '/c', 'bun', 'run', 'packages/mcp/src/index.ts'], {
+            stdio: ['ignore', 'inherit', 'pipe'],
+            env: {
+              ...process.env,
+              PORT: '7600',
+              WS_PORT: '7601',
+              ...(authToken ? { OPENPENCIL_MCP_AUTH_TOKEN: authToken } : {}),
+              OPENPENCIL_MCP_CORS_ORIGIN: corsOrigin
+            }
+          })
+        : spawn('bun', ['run', 'packages/mcp/src/index.ts'], {
+            stdio: ['ignore', 'inherit', 'pipe'],
+            env: {
+              ...process.env,
+              PORT: '7600',
+              WS_PORT: '7601',
+              ...(authToken ? { OPENPENCIL_MCP_AUTH_TOKEN: authToken } : {}),
+              OPENPENCIL_MCP_CORS_ORIGIN: corsOrigin
+            }
+          })
 
       child.stderr?.on('data', (data: Buffer) => {
         const text = data.toString()

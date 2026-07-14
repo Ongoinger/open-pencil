@@ -1,8 +1,8 @@
 import { pick } from 'es-toolkit/object'
 
-import type { SceneNode } from '#core/scene-graph'
-import type { UndoEntry } from '#core/scene-graph/undo'
-import type { Rect, Vector } from '#core/types'
+import { cloneVectorNetwork, type SceneNode } from '@open-pencil/scene-graph'
+import type { Rect, Vector } from '@open-pencil/scene-graph/primitives'
+import type { UndoEntry } from '@open-pencil/scene-graph/undo'
 
 import { restoreSubtree, snapshotSubtree } from './clipboard/subtree-history'
 import { collectNodePositions, pushPositionUndo } from './history/position'
@@ -12,6 +12,19 @@ import {
   type PageSnapshot
 } from './history/snapshot'
 import type { EditorContext } from './types'
+
+type ResizeSnapshot = Pick<SceneNode, 'x' | 'y' | 'width' | 'height' | 'vectorNetwork'>
+type ResizeOriginal = Rect & { vectorNetwork?: SceneNode['vectorNetwork'] }
+
+function createResizeSnapshot(node: SceneNode): ResizeSnapshot {
+  return {
+    x: node.x,
+    y: node.y,
+    width: node.width,
+    height: node.height,
+    vectorNetwork: node.vectorNetwork ? cloneVectorNetwork(node.vectorNetwork) : null
+  }
+}
 
 export function createUndoActions(ctx: EditorContext) {
   function commitMove(originals: Map<string, Vector>) {
@@ -77,18 +90,49 @@ export function createUndoActions(ctx: EditorContext) {
     })
   }
 
-  function commitResize(nodeId: string, origRect: Rect) {
+  function commitResize(nodeId: string, original: ResizeOriginal) {
+    const node = ctx.graph.getNode(nodeId)
+    if (!node) return
+    const final: ResizeOriginal =
+      'vectorNetwork' in original
+        ? createResizeSnapshot(node)
+        : { x: node.x, y: node.y, width: node.width, height: node.height }
+    ctx.undo.push({
+      label: 'Resize',
+      forward: () => {
+        ctx.graph.updateNode(nodeId, final)
+        ctx.runLayoutForNode(nodeId)
+      },
+      inverse: () => {
+        ctx.graph.updateNode(nodeId, original)
+        ctx.runLayoutForNode(nodeId)
+      }
+    })
+  }
+
+  function commitGroupResize(
+    nodeId: string,
+    origRect: Rect,
+    origChildren: Map<string, ResizeSnapshot>
+  ) {
     const node = ctx.graph.getNode(nodeId)
     if (!node) return
     const finalRect = { x: node.x, y: node.y, width: node.width, height: node.height }
+    const finalChildren = new Map<string, ResizeSnapshot>()
+    for (const [childId] of origChildren) {
+      const child = ctx.graph.getNode(childId)
+      if (child) finalChildren.set(childId, createResizeSnapshot(child))
+    }
     ctx.undo.push({
       label: 'Resize',
       forward: () => {
         ctx.graph.updateNode(nodeId, finalRect)
+        for (const [childId, final] of finalChildren) ctx.graph.updateNode(childId, final)
         ctx.runLayoutForNode(nodeId)
       },
       inverse: () => {
         ctx.graph.updateNode(nodeId, origRect)
+        for (const [childId, orig] of origChildren) ctx.graph.updateNode(childId, orig)
         ctx.runLayoutForNode(nodeId)
       }
     })
@@ -155,6 +199,7 @@ export function createUndoActions(ctx: EditorContext) {
     commitMoveWithReparent,
     commitDuplicateMove,
     commitResize,
+    commitGroupResize,
     commitRotation,
     commitNodeUpdate,
     undoAction,

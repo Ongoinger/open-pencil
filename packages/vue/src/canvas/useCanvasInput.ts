@@ -2,7 +2,8 @@ import { useEventListener } from '@vueuse/core'
 import { ref, type Ref } from 'vue'
 
 import type { Editor } from '@open-pencil/core/editor'
-import type { SceneNode } from '@open-pencil/core/scene-graph'
+import { getPrototypeNavigationPageId } from '@open-pencil/core/editor'
+import type { SceneNode } from '@open-pencil/scene-graph'
 
 import {
   handleBendHandleMove,
@@ -51,6 +52,10 @@ export function useCanvasInput(
   const selectedIdsBeforeClickSequence = ref<ReadonlySet<string>>(new Set())
   const spaceHeld = useSpaceHeld()
   const { recordClick, getClickCount } = createClickCounter()
+
+  function isPrototypePreviewActive() {
+    return 'prototypePreview' in editor.state && editor.state.prototypePreview === true
+  }
 
   const { getCoords, canvasToLocal, hitTestInScope, hitFns } = createCanvasPointer(
     canvasRef,
@@ -147,6 +152,16 @@ export function useCanvasInput(
     onTextDblClick(e)
   }
 
+  function tryPrototypeNavigation(cx: number, cy: number): boolean {
+    if (editor.state.activeTool !== 'SELECT') return false
+    const hit = hitTestInScope(cx, cy, true)
+    if (!hit) return false
+    const pageId = getPrototypeNavigationPageId(hit)
+    if (!pageId || pageId === editor.state.currentPageId) return false
+    void editor.switchPage(pageId)
+    return true
+  }
+
   function onMouseDown(e: MouseEvent) {
     const paddingEdit = autoLayoutPaddingEdit.value
     if (paddingEdit) {
@@ -155,6 +170,22 @@ export function useCanvasInput(
     if (!editor.state.editingTextId) canvasRef.value?.focus()
     editor.setHoveredNode(null)
     const { sx, sy, cx, cy } = getCoords(e)
+
+    if (isPrototypePreviewActive()) {
+      if (tryPrototypeNavigation(cx, cy)) {
+        e.preventDefault()
+        e.stopPropagation()
+      }
+      drag.value = null
+      return
+    }
+
+    if (e.altKey && tryPrototypeNavigation(cx, cy)) {
+      e.preventDefault()
+      e.stopPropagation()
+      drag.value = null
+      return
+    }
 
     const selectedIdsBeforeMouseDown = new Set(editor.state.selectedIds)
     const clickCount = recordClick(sx, sy)

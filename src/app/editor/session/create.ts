@@ -1,15 +1,15 @@
-import { shallowReactive } from 'vue'
+import { shallowReactive, watch } from 'vue'
 
 import { createEditor } from '@open-pencil/core/editor'
 import { BUILTIN_IO_FORMATS, IORegistry } from '@open-pencil/core/io'
-import { SceneGraph } from '@open-pencil/core/scene-graph'
+import { SceneGraph } from '@open-pencil/scene-graph'
 
 import {
   getActiveEditorStore,
   setActiveEditorStore,
   useEditorStore
 } from '@/app/editor/active-store'
-import { loadFont } from '@/app/editor/fonts'
+import { ensureGraphFonts, loadFont } from '@/app/editor/fonts'
 import {
   createEditorComputedRefs,
   createEditorStoreModules,
@@ -45,6 +45,24 @@ export function createEditorStore(initialGraph?: SceneGraph) {
   const { selectedNodes, selectedNode, layerTree } = createEditorComputedRefs(editor, state)
 
   const modules = createEditorStoreModules(editor, graph, state, io, viewportSize)
+  let fontSyncRun = 0
+  const stopCurrentPageFontWatch = watch(
+    () => [state.currentPageId, state.sceneVersion],
+    () => {
+      const page = editor.graph.getNode(state.currentPageId)
+      if (!page) return
+
+      const runId = ++fontSyncRun
+      void ensureGraphFonts(editor.graph, page.childIds)
+        .then((changed) => {
+          if (!changed || runId !== fontSyncRun) return undefined
+          editor.requestRender()
+          return undefined
+        })
+        .catch((error) => console.warn('[Font Sync]', error))
+    },
+    { immediate: true }
+  )
 
   // ─── Public API ───────────────────────────────────────────────
   // Spread all core Editor methods, then override getters and add app-specific.
@@ -57,7 +75,11 @@ export function createEditorStore(initialGraph?: SceneGraph) {
     layerTree,
 
     // App-specific overrides and additions
-    ...modules
+    ...modules,
+    async dispose() {
+      stopCurrentPageFontWatch()
+      modules.dispose()
+    }
   }
 
   defineEditorStoreAccessors(store, editor)

@@ -1,10 +1,11 @@
 import type { CanvasKit, Canvas } from 'canvaskit-wasm'
 
+import type { SceneGraph } from '@open-pencil/scene-graph'
+import { computeDescendantVisualBounds } from '@open-pencil/scene-graph/geometry'
+
 import type { SkiaRenderer } from '#core/canvas'
 import type { RenderColorSpace } from '#core/color/management'
-import { computeDescendantVisualBounds } from '#core/geometry'
 import { extractExportGraph, findPageId } from '#core/io/subgraph'
-import type { SceneGraph } from '#core/scene-graph'
 
 export type RasterExportFormat = 'PNG' | 'JPG' | 'WEBP'
 export type ExportFormat = RasterExportFormat | 'SVG'
@@ -183,10 +184,39 @@ function renderToSurface(
         ])
       : downsampleSurface.makeImageSnapshot()
     const encoded = image.encodeToBytes(ckImageFormat(ck, format), quality)
+    let resultBytes: Uint8Array | null = encoded ? new Uint8Array(encoded) : null
+
+    // CanvasKit's `encodeToBytes` returns null for JPEG/WEBP in this build, so
+    // fall back to encoding the raw pixels through the browser canvas.
+    if (!resultBytes && (format === 'JPG' || format === 'WEBP')) {
+      const exportWidth = alphaBounds ? alphaBounds.maxX - alphaBounds.minX : width
+      const exportHeight = alphaBounds ? alphaBounds.maxY - alphaBounds.minY : height
+      const exportMinX = alphaBounds ? alphaBounds.minX : 0
+      const exportMinY = alphaBounds ? alphaBounds.minY : 0
+
+      const rawPixels = downsampleCanvas.readPixels(exportMinX, exportMinY, {
+        alphaType: ck.AlphaType.Unpremul,
+        colorType: ck.ColorType.RGBA_8888,
+        colorSpace: ck.ColorSpace.SRGB,
+        width: exportWidth,
+        height: exportHeight
+      })
+
+      if (rawPixels instanceof Uint8Array) {
+        resultBytes = renderer.encodeRasterFallback(
+          rawPixels,
+          exportWidth,
+          exportHeight,
+          format,
+          quality
+        )
+      }
+    }
+
     image.delete()
     downsampleSurface.delete()
     ck.Free(downsamplePixels)
-    return encoded ? new Uint8Array(encoded) : null
+    return resultBytes
   } finally {
     surface.delete()
     ck.Free(pixels)

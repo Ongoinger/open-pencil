@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 
-import type { NodeChange } from '#core/kiwi/fig/codec'
+import type { NodeChange } from '@open-pencil/kiwi/fig/codec'
+
 import { importNodeChanges } from '#core/kiwi/fig/import'
 import { nodeChangeToProps } from '#core/kiwi/fig/node-change/convert'
 
@@ -67,6 +68,20 @@ describe('Figma boolean operation import', () => {
     expect(booleanNode.type).toBe('BOOLEAN_OPERATION')
     expect(booleanNode.booleanOperation).toBe('INTERSECT')
     expect(children.map((child) => child.type)).toEqual(['RECTANGLE', 'ELLIPSE'])
+  })
+
+  test('maps Kiwi XOR boolean operations to scene graph exclude', () => {
+    const props = nodeChangeToProps(
+      {
+        type: 'BOOLEAN_OPERATION',
+        name: 'Imported boolean',
+        booleanOperation: 'XOR'
+      } as NodeChange,
+      []
+    )
+
+    expect(props.nodeType).toBe('BOOLEAN_OPERATION')
+    expect(props.booleanOperation).toBe('EXCLUDE')
   })
 
   test('defaults missing boolean operations to union', () => {

@@ -2,6 +2,7 @@ import type { Editor, EditorState } from '@open-pencil/core/editor'
 import { prefetchFigmaSchema } from '@open-pencil/core/kiwi'
 
 import { createDocumentViewportActions, downloadBlob } from '@/app/document/io/browser'
+import { createDOMOpenActions } from '@/app/document/io/dom'
 import { createOpenActions, createReloadActions } from '@/app/document/io/read'
 import { createDocumentSourceActions, createDocumentSourceState } from '@/app/document/io/source'
 import type { ViewportSize } from '@/app/document/io/types'
@@ -11,6 +12,7 @@ type DocumentIOState = EditorState & {
   documentName: string
   loading: boolean
   autosaveEnabled: boolean
+  currentDraftId: string | null
 }
 
 export function createDocumentIOActions(
@@ -47,9 +49,16 @@ export function createDocumentIOActions(
     stopWatchingFile,
     startWatchingFile,
     getRenderer: () => editor.renderer,
+    fitCurrentPageToViewport,
     ...sourceState
   })
   const { openFigFile } = createOpenActions({
+    editor,
+    state,
+    setDocumentSource: sourceActions.setDocumentSource,
+    fitCurrentPageToViewport
+  })
+  const { openDOMFile, importDOMText } = createDOMOpenActions({
     editor,
     state,
     setDocumentSource: sourceActions.setDocumentSource,
@@ -61,10 +70,17 @@ export function createDocumentIOActions(
     setViewportSize,
     fitCurrentPageToViewport,
     setDocumentSource: sourceActions.setDocumentSource,
+    clearDocumentSource: sourceActions.clearDocumentSource,
     setPlannedFilePath: sourceActions.setPlannedFilePath,
     startWatchingCurrentFile: sourceActions.startWatchingCurrentFile,
     disposeDocumentIO: sourceActions.disposeDocumentIO,
+    saveCurrentDraft: sourceActions.saveCurrentDraft,
+    openLocalDraft: sourceActions.openLocalDraft,
+    restoreLatestLocalDraft: sourceActions.restoreLatestLocalDraft,
+    deleteLocalDraft: sourceActions.deleteLocalDraft,
     openFigFile,
+    openDOMFile,
+    importDOMText,
     saveFigFile: sourceActions.saveFigFile,
     saveFigFileAs: sourceActions.saveFigFileAs
   }

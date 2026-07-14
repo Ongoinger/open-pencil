@@ -1,11 +1,30 @@
-import type { NodeChange } from '#core/kiwi/fig/codec'
-import type { CharacterStyleOverride, StyleRun } from '#core/scene-graph'
+import type { NodeChange } from '@open-pencil/kiwi/fig/codec'
+import type { CharacterStyleOverride, StyleRun } from '@open-pencil/scene-graph'
+
 import { styleToWeight } from '#core/text/fonts'
 
 import { convertFontFeatures } from './font/features'
 import { convertFontVariations } from './font/variations'
 import { convertFills } from './paint'
 import { convertLetterSpacing, convertLineHeight, mapTextDecoration } from './text-values'
+
+function applyTextDecorationOverride(style: CharacterStyleOverride, override: NodeChange): void {
+  const deco = override.textDecoration
+  if (deco) style.textDecoration = mapTextDecoration(deco)
+  if (override.textDecorationStyle)
+    style.textDecorationStyle =
+      override.textDecorationStyle as CharacterStyleOverride['textDecorationStyle']
+  if (override.textDecorationThickness)
+    style.textDecorationThickness = override.textDecorationThickness.value ?? null
+  if (override.textDecorationSkipInk !== undefined)
+    style.textDecorationSkipInk = override.textDecorationSkipInk
+  if (override.textUnderlineOffset)
+    style.textUnderlineOffset = override.textUnderlineOffset.value ?? null
+  if (override.textDecorationFillPaints) {
+    const decorationFills = convertFills(override.textDecorationFillPaints)
+    if (decorationFills.length > 0) style.textDecorationFills = decorationFills
+  }
+}
 
 function convertStyleOverride(
   override: NodeChange,
@@ -32,8 +51,7 @@ function convertStyleOverride(
     const lh = convertLineHeight(override.lineHeight, override.fontSize ?? fallbackFontSize)
     if (lh != null) style.lineHeight = lh
   }
-  const deco = override.textDecoration
-  if (deco) style.textDecoration = mapTextDecoration(deco)
+  applyTextDecorationOverride(style, override)
   if (override.fillPaints) {
     const fills = convertFills(override.fillPaints)
     if (fills.length > 0) style.fills = fills

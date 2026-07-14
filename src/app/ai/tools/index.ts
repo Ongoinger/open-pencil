@@ -3,11 +3,12 @@ import { tool } from 'ai'
 import * as v from 'valibot'
 
 import { computeAllLayouts } from '@open-pencil/core/layout'
-import type { SceneNode } from '@open-pencil/core/scene-graph'
 import { CORE_TOOLS, toolsToAI } from '@open-pencil/core/tools'
 import type { StepBudget, ToolLogEntry } from '@open-pencil/core/tools'
+import type { SceneNode } from '@open-pencil/scene-graph'
 
 import { makeFigmaFromStore } from '@/app/automation/bridge/figma-factory'
+import { createDesignReasoningTools } from '@/app/ai/design-system/tool'
 import { getActiveEditorStore } from '@/app/editor/active-store'
 import type { EditorStore } from '@/app/editor/active-store'
 import { ensureGraphFonts } from '@/app/editor/fonts'
@@ -86,7 +87,7 @@ export function createAITools(store: EditorStore) {
   let beforeSnapshot: Map<string, SceneNode> | null = null
   const runState = getRunState(store)
 
-  return toolsToAI(
+  const coreTools = toolsToAI(
     CORE_TOOLS,
     {
       getFigma: () => makeFigmaFromStore(store),
@@ -130,6 +131,11 @@ export function createAITools(store: EditorStore) {
     },
     { v, valibotSchema, tool }
   )
+
+  return {
+    ...createDesignReasoningTools(),
+    ...coreTools
+  }
 }
 
 export type AITools = ReturnType<typeof createAITools>

@@ -1,11 +1,13 @@
+import type { NodeChange, Paint } from '@open-pencil/kiwi/fig/codec'
+import { stringToGuid } from '@open-pencil/kiwi/fig/guid'
+import type { SceneGraph, SceneNode } from '@open-pencil/scene-graph'
+import type { Color, GUID, Matrix, Vector } from '@open-pencil/scene-graph/primitives'
+
 /* eslint-disable max-lines */
 import { bytesToHex } from '#core/bytes/hex'
-import type { NodeChange, Paint } from '#core/kiwi/fig/codec'
-import type { SceneGraph, SceneNode } from '#core/scene-graph'
-import type { Color, GUID, Matrix, Vector } from '#core/types'
 
-import { stringToGuid } from './guid'
 import {
+  applyExportSettingsPluginData,
   mergePluginData,
   NODE_TYPE_PLUGIN_KEY,
   serializePluginRelaunchData,
@@ -13,6 +15,12 @@ import {
 } from './plugin-data'
 
 export type KiwiNodeChange = NodeChange & Record<string, unknown>
+
+type KiwiBooleanOperation = NonNullable<NodeChange['booleanOperation']>
+
+function toKiwiBooleanOperation(operation: SceneNode['booleanOperation']): KiwiBooleanOperation {
+  return operation === 'EXCLUDE' ? 'XOR' : (operation ?? 'UNION')
+}
 
 /**
  * Build a mapping from assetRef key strings ("key@version" or "key") to
@@ -40,6 +48,9 @@ interface SceneNodeToKiwiContext {
   blobs: Uint8Array[]
   blobIndexByHex?: Map<string, number>
   nodeIdToGuid?: Map<string, GUID>
+  /** Reverse index of assigned GUID values ("sessionID:localID") for O(1)
+   *  collision detection. Populated alongside every nodeIdToGuid.set() call. */
+  assignedGuidValues?: Set<string>
   fontDigestMap?: Map<string, Uint8Array>
   glyphBlobMap?: Map<string, number>
   varIdToGuid?: Map<string, GUID>
@@ -286,13 +297,28 @@ function getOrCreateNodeGuid(
   nodeId: string,
   localIdCounter: { value: number }
 ): GUID | undefined {
-  if (!context.graph.getNode(nodeId)) return undefined
+  const node = context.graph.getNode(nodeId)
+  if (!node) return undefined
   const existing = context.nodeIdToGuid?.get(nodeId)
   if (existing) return existing
-  const node = context.graph.getNode(nodeId)
-  const importedGuid = node?.source.id ? parseGuidOrNull(node.source.id) : null
+  const importedGuid = node.source.id ? parseGuidOrNull(node.source.id) : null
+
+  // When source.id maps to a GUID value that is already assigned to a
+  // different node (e.g. two nodes from different canvases with the same
+  // source.id "1:94"), fall back to the counter to avoid collisions.
+  if (importedGuid && context.assignedGuidValues) {
+    const key = `${importedGuid.sessionID}:${importedGuid.localID}`
+    if (context.assignedGuidValues.has(key)) {
+      const guid: GUID = { sessionID: 1, localID: localIdCounter.value++ }
+      context.nodeIdToGuid?.set(nodeId, guid)
+      context.assignedGuidValues.add(`${guid.sessionID}:${guid.localID}`)
+      return guid
+    }
+  }
+
   const guid = importedGuid ?? { sessionID: 1, localID: localIdCounter.value++ }
   context.nodeIdToGuid?.set(nodeId, guid)
+  context.assignedGuidValues?.add(`${guid.sessionID}:${guid.localID}`)
   return guid
 }
 
@@ -366,7 +392,11 @@ function applyRawFigmaNodeFields(
       continue
     }
     if (key === 'derivedTextData' && node.source.id) {
-      nc[key] = materialized[key]
+      nc.derivedTextData = materialized.derivedTextData
+      continue
+    }
+    if (key === 'textDecorationFillPaints' && node.source.id) {
+      nc.textDecorationFillPaints = materialized.textDecorationFillPaints
       continue
     }
     // Skip any key already set on nc — explicit serialization takes priority
@@ -534,6 +564,28 @@ function hasRawVectorPayload(node: SceneNode): boolean {
   return 'vectorData' in node.source.fig.rawNodeFields
 }
 
+const SUPPORTED_NORMALIZED_EFFECT_TYPES = new Set([
+  'DROP_SHADOW',
+  'INNER_SHADOW',
+  'LAYER_BLUR',
+  'BACKGROUND_BLUR',
+  'FOREGROUND_BLUR'
+])
+
+function hasRawUnsupportedEffects(node: SceneNode): boolean {
+  const effects = node.source.fig.rawNodeFields.effects
+  return (
+    Array.isArray(effects) &&
+    effects.some(
+      (effect) =>
+        effect &&
+        typeof effect === 'object' &&
+        'type' in effect &&
+        !SUPPORTED_NORMALIZED_EFFECT_TYPES.has(String(effect.type))
+    )
+  )
+}
+
 function nodeForGeometryExport(node: SceneNode): SceneNode {
   if (!hasRawGeometryPayload(node) && !hasRawVectorPayload(node)) return node
   return {
@@ -570,7 +622,7 @@ function applyNodeVisualProps(
 
   context.serializeCornerRadii(node, nc)
 
-  if (node.effects.length > 0) {
+  if (node.effects.length > 0 && !hasRawUnsupportedEffects(node)) {
     nc.effects = node.effects.map((effect) => ({
       type: effect.type === 'LAYER_BLUR' ? 'FOREGROUND_BLUR' : effect.type,
       color: context.safeColor(effect.color),
@@ -639,6 +691,9 @@ export function sceneNodeToKiwiWithContext(
     size: exportNodeSize(node),
     transform: exportNodeTransform(context, node)
   }
+  if (node.type === 'GROUP') {
+    nc.resizeToFit = true
+  }
   // Only set strokeWeight/strokeAlign when the node has strokes in the scene
   // model. For imported nodes without strokes but with raw strokeWeight data
   // (e.g. text nodes, instance children with scaled strokes), the raw value
@@ -654,7 +709,8 @@ export function sceneNodeToKiwiWithContext(
   applyInstancePayload(context, node, nc, localIdCounter)
   if (node.type === 'COMPONENT_SET') upsertPluginData(node, NODE_TYPE_PLUGIN_KEY, node.type)
   if (nc.type === 'CANVAS') nc.pageType = 'DESIGN'
-  if (node.type === 'BOOLEAN_OPERATION') nc.booleanOperation = node.booleanOperation ?? 'UNION'
+  if (node.type === 'BOOLEAN_OPERATION')
+    nc.booleanOperation = toKiwiBooleanOperation(node.booleanOperation)
   if (strokePaints.length > 0) nc.strokePaints = strokePaints
 
   context.serializeLayoutProps(node, nc)
@@ -662,6 +718,7 @@ export function sceneNodeToKiwiWithContext(
   context.serializeVariableBindings(node, nc, context.graph, context.varIdToGuid)
   applyRawFigmaNodeFields(context, node, nc)
 
+  applyExportSettingsPluginData(node)
   const pluginData = mergePluginData(node.pluginData)
   if (pluginData.length > 0) nc.pluginData = pluginData
   if (node.pluginRelaunchData.length > 0) {

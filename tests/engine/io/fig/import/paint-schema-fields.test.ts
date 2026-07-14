@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 
-import type { NodeChange } from '#core/kiwi/fig/codec'
+import type { NodeChange } from '@open-pencil/kiwi/fig/codec'
+
 import { nodeChangeToProps } from '#core/kiwi/fig/node-change/convert'
 
 const sourceNodeId = { sessionID: 12, localID: 34 }
@@ -18,6 +19,7 @@ describe('Figma paint schema field import', () => {
             opacity: 0.75,
             visible: true,
             sourceNodeId,
+            scale: 1.5,
             spacing: 6,
             patternSpacing: { x: 8, y: 12 },
             patternTileType: 'HORIZONTAL_HEXAGONAL',
@@ -33,6 +35,7 @@ describe('Figma paint schema field import', () => {
       type: 'PATTERN',
       opacity: 0.75,
       sourceNodeId: '12:34',
+      scale: 1.5,
       spacing: 6,
       patternSpacing: { x: 8, y: 12 },
       patternTileType: 'HORIZONTAL_HEXAGONAL',

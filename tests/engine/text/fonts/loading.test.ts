@@ -12,10 +12,7 @@ import {
   weightToFigmaStyle,
   weightToStyle,
   FontManager,
-  SceneGraph,
-  cjkLocalFallbackFamilies,
-  fontFallbackEntry,
-  fontFallbackManifest
+  SceneGraph
 } from '@open-pencil/core'
 
 import { expectDefined } from '#tests/helpers/assert'
@@ -202,6 +199,35 @@ describe('FontManager loaded font cache', () => {
     } finally {
       globalThis.fetch = originalFetch
     }
+  })
+
+  test('locks simplified Chinese fallback to the first available family', async () => {
+    const manager = new FontManager()
+    manager.setFallbackUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64)')
+    manager.setHostFallbackFontLoader(async (family) => {
+      if (family === 'Microsoft YaHei UI') return new ArrayBuffer(16)
+      if (family === 'Noto Sans SC') return new ArrayBuffer(16)
+      return null
+    })
+
+    const result = await manager.ensureFallbackPack(['cjk-sc'])
+
+    expect(result['cjk-sc']).toEqual(['Microsoft YaHei UI'])
+    expect(manager.getCJKFallbackFamilies()).toEqual(['Microsoft YaHei UI'])
+  })
+
+  test('does not duplicate simplified Chinese fallback families across repeated requests', async () => {
+    const manager = new FontManager()
+    manager.setFallbackUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64)')
+    manager.setHostFallbackFontLoader(async (family) => {
+      if (family === 'Microsoft YaHei UI') return new ArrayBuffer(16)
+      return null
+    })
+
+    await manager.ensureFallbackPack(['cjk-sc'])
+    await manager.ensureFallbackPack(['cjk-sc'])
+
+    expect(manager.getCJKFallbackFamilies()).toEqual(['Microsoft YaHei UI'])
   })
 })
 
@@ -537,29 +563,6 @@ describe('isVariableFont', () => {
 
   test('fvar as only table', () => {
     expect(isVariableFont(makeFontBuffer(['fvar']))).toBe(true)
-  })
-})
-
-describe('font fallback manifest', () => {
-  test('selects platform CJK local candidates', () => {
-    expect(cjkLocalFallbackFamilies('Mozilla/5.0 (Macintosh)')).toContain('PingFang SC')
-    expect(cjkLocalFallbackFamilies('Mozilla/5.0 (Windows NT 10.0)')).toContain(
-      'Microsoft YaHei UI'
-    )
-    expect(cjkLocalFallbackFamilies('X11; Linux x86_64')).toContain('Noto Sans CJK SC')
-  })
-
-  test('defines remote fallback families for CJK and Arabic', () => {
-    const manifest = fontFallbackManifest('X11; Linux x86_64')
-    expect(manifest.cjk.remoteFamilies).toContain('Noto Sans SC')
-    expect(manifest.arabic.remoteFamilies).toContain('Noto Naskh Arabic')
-  })
-
-  test('returns entries by script', () => {
-    expect(fontFallbackEntry('arabic').localFamilies).toContain('Geeza Pro')
-    expect(fontFallbackEntry('cjk', 'Mozilla/5.0 (Macintosh)').localFamilies).toContain(
-      'PingFang SC'
-    )
   })
 })
 
