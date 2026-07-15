@@ -9,6 +9,7 @@ export {
   webpFormat,
   svgFormat,
   htmlFormat,
+  vueFormat,
   jsxFormat
 } from './formats'
 export { exportFigFile, parseFigFile, readFigFile } from './formats/fig'
@@ -26,6 +27,7 @@ export {
 } from './formats/raster'
 export { renderNodesToSVG, geometryBlobToSVGPath, vectorNetworkToSVGPaths } from './formats/svg'
 export { renderNodesToHTML, type HTMLExportOptions } from './formats/html'
+export { renderNodesToVue, type VueExportOptions } from './formats/vue'
 export type {
   IOFormatRole,
   IOFormatCategory,

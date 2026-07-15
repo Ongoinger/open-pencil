@@ -5,6 +5,7 @@ import { renderNodesToHTML } from './formats/html'
 import { parsePenFile } from './formats/pen'
 import { headlessRenderNodes, renderNodesToImage, type RasterExportFormat } from './formats/raster'
 import { renderNodesToSVG } from './formats/svg'
+import { renderNodesToVue } from './formats/vue'
 import { extractExportGraph, findPageId } from './subgraph'
 import type {
   ExportRequest,
@@ -338,6 +339,45 @@ export const htmlFormat: IOFormatAdapter = {
   }
 }
 
+export const vueFormat: IOFormatAdapter = {
+  id: 'vue',
+  label: 'Vue',
+  role: 'derived-export',
+  category: 'code',
+  extensions: ['vue'],
+  mimeTypes: ['text/plain', 'text/x-vue'],
+  support: {
+    exportDocument: true,
+    exportPage: true,
+    exportSelection: true,
+    exportNode: true
+  },
+  exportOptions: {
+    scale: false,
+    quality: false,
+    colorSpace: true
+  },
+  async exportContent(request, options?: SVGExportOptions) {
+    const target = resolveExportNodes(request)
+    if (!target) throw new Error('Nothing to export')
+    const includePageBackground =
+      request.target.scope === 'page' || request.target.scope === 'document'
+    const data = renderNodesToVue(request.graph, target.pageId, target.nodeIds, {
+      title: resolveExportTitle(request.graph, request.target),
+      colorSpace: options?.colorSpace,
+      includePageBackground
+    })
+    if (!data) throw new Error('Nothing to export')
+    return {
+      format: 'vue',
+      mimeType: 'text/plain',
+      extension: 'vue',
+      data,
+      encoding: 'utf8'
+    }
+  }
+}
+
 export const jsxFormat: IOFormatAdapter = {
   id: 'jsx',
   label: 'JSX',
@@ -382,5 +422,6 @@ export const BUILTIN_IO_FORMATS: IOFormatAdapter[] = [
   svgFormat,
   pdfFormat,
   htmlFormat,
+  vueFormat,
   jsxFormat
 ]

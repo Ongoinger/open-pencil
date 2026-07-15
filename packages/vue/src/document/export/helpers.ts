@@ -9,7 +9,7 @@ import type { ExportFormatId, ExportSetting, PluginDataEntry } from '@open-penci
 import { useSceneComputed } from '#vue/internal/scene-computed/use'
 
 export const EXPORT_SCALES = [0.5, 0.75, 1, 1.5, 2, 3, 4] as const
-export const EXPORT_FORMATS: ExportFormatId[] = ['png', 'jpg', 'webp', 'svg', 'html', 'pdf']
+export const EXPORT_FORMATS: ExportFormatId[] = ['png', 'jpg', 'webp', 'svg', 'html', 'vue', 'pdf']
 
 export type ExportPanelTarget = 'selection' | 'page'
 

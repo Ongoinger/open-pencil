@@ -73,6 +73,10 @@ const BUNDLED_FONTS: Record<string, string> = {
   'Inter|SemiBold': '/Inter-SemiBold.ttf',
   'Inter|Bold': '/Inter-Bold.ttf',
   'Inter|ExtraBold': '/Inter-ExtraBold.ttf',
+  // Built-in CJK face for AI/generated Chinese text (lazy-loaded on demand).
+  'Noto Sans SC|Regular': '/NotoSansSC-Regular.otf',
+  'Noto Sans SC|Medium': '/NotoSansSC-Regular.otf',
+  'Noto Sans SC|Bold': '/NotoSansSC-Regular.otf',
   'Noto Naskh Arabic|Regular': '/NotoNaskhArabic-Regular.ttf'
 }
 
@@ -137,13 +141,14 @@ const LOADED_FAMILIES_LIMIT = 64
 export class FontManager {
   private loadedFamilies = new Map<string, ArrayBuffer>()
   private fontProvider: TypefaceFontProvider | null = null
+  private fontProviders = new Set<TypefaceFontProvider>()
   private localFonts: FontInfo[] | null = null
   private localFontAccessState: LocalFontAccessState = IS_BROWSER ? 'prompt' : 'unsupported'
   private downloadedFontCache: DownloadedFontCache | null = null
   private fallbackUserAgent: string | undefined
   private hostFallbackFontLoader: HostFontLoader | null = null
   private webFonts = new WebFontResolver()
-  private registeredRenderFamilies = new Set<string>()
+  private registeredRenderFamilies = new WeakMap<TypefaceFontProvider, Set<string>>()
   private cjkFallbackFamilies: string[] = []
   private cjkFallbackPromise: Promise<string[]> | null = null
   private arabicFallbackFamilies: string[] = []
@@ -151,7 +156,7 @@ export class FontManager {
 
   attachProvider(_canvasKit: CanvasKit, provider: TypefaceFontProvider): void {
     this.fontProvider = provider
-    this.registeredRenderFamilies.clear()
+    this.fontProviders.add(provider)
     for (const [cacheKey, data] of this.loadedFamilies) {
       const family = cacheKey.slice(0, cacheKey.indexOf('|'))
       this.registerFontInCanvasKit(family, data)
@@ -159,7 +164,16 @@ export class FontManager {
   }
 
   detachProvider(provider?: TypefaceFontProvider | null): void {
-    if (!provider || this.fontProvider === provider) this.fontProvider = null
+    if (!provider) {
+      this.fontProvider = null
+      this.fontProviders.clear()
+      return
+    }
+    this.fontProviders.delete(provider)
+    this.registeredRenderFamilies.delete(provider)
+    if (this.fontProvider === provider) {
+      this.fontProvider = this.fontProviders.values().next().value ?? null
+    }
   }
 
   provider(): TypefaceFontProvider | null {
@@ -291,10 +305,9 @@ export class FontManager {
     const downloadedBuffer = await this.loadCachedFont(family, style)
     if (downloadedBuffer) return downloadedBuffer
 
-    const localBuffer = await this.findLocalFont(family, style)
-    if (localBuffer) return this.registerAndCache(family, style, localBuffer)
-
-    const bundledUrl = BUNDLED_FONTS[cacheKey]
+    // Prefer bundled faces (Inter / Noto Sans SC / Arabic) before OS APIs so
+    // AI-generated Chinese text works even when system font loading is deferred.
+    const bundledUrl = BUNDLED_FONTS[cacheKey] ?? BUNDLED_FONTS[`${family}|Regular`]
     if (bundledUrl) {
       try {
         const buffer = await this.fetchBundledFont(bundledUrl)
@@ -303,6 +316,9 @@ export class FontManager {
         console.warn(`Bundled font load failed for "${family}" ${style}:`, e)
       }
     }
+
+    const localBuffer = await this.findLocalFont(family, style)
+    if (localBuffer) return this.registerAndCache(family, style, localBuffer)
 
     if (typeof fetch !== 'undefined') {
       try {
@@ -347,14 +363,8 @@ export class FontManager {
     if (!data) return family
 
     const renderFamily = fontFaceRenderFamily(family, style)
-    if (!this.registeredRenderFamilies.has(renderFamily)) {
-      if (this.registerFontInCanvasKit(renderFamily, data)) {
-        this.registeredRenderFamilies.add(renderFamily)
-      } else {
-        return family
-      }
-    }
-    return renderFamily
+    if (this.registerFontInCanvasKit(renderFamily, data)) return renderFamily
+    return family
   }
 
   collectFontKeys(graph: SceneGraph, nodeIds: string[]): Array<[string, string]> {
@@ -549,15 +559,35 @@ export class FontManager {
   }
 
   private registerFontInCanvasKit(family: string, data: ArrayBuffer): boolean {
-    if (!this.fontProvider || data.byteLength < 4) return false
-    if (this.registeredRenderFamilies.has(family)) return true
-    try {
-      this.fontProvider.registerFont(data, family)
-      this.registeredRenderFamilies.add(family)
-      return true
-    } catch {
-      return false
+    if (data.byteLength < 4) return false
+    const providers =
+      this.fontProviders.size > 0
+        ? this.fontProviders
+        : this.fontProvider
+          ? new Set([this.fontProvider])
+          : null
+    if (!providers || providers.size === 0) return false
+
+    let registered = false
+    for (const provider of providers) {
+      let families = this.registeredRenderFamilies.get(provider)
+      if (!families) {
+        families = new Set()
+        this.registeredRenderFamilies.set(provider, families)
+      }
+      if (families.has(family)) {
+        registered = true
+        continue
+      }
+      try {
+        provider.registerFont(data, family)
+        families.add(family)
+        registered = true
+      } catch {
+        // Keep trying other providers.
+      }
     }
+    return registered
   }
 
   private registerFontInBrowser(family: string, style: string, data: ArrayBuffer) {

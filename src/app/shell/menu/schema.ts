@@ -45,6 +45,7 @@ export const APP_MENU_SCHEMA = [
           { id: 'export-png', label: 'PNG' },
           { id: 'export-svg', label: 'SVG' },
           { id: 'export-html', label: 'HTML' },
+          { id: 'export-vue', label: 'Vue' },
           { id: 'export-fig', label: '.fig' }
         ]
       },

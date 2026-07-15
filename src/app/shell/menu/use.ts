@@ -71,6 +71,9 @@ export function useMenu() {
     'export-html': () => {
       if (store.state.selectedIds.size > 0) void store.exportSelection(1, 'html')
     },
+    'export-vue': () => {
+      if (store.state.selectedIds.size > 0) void store.exportSelection(1, 'vue')
+    },
     'export-fig': () => {
       if (store.state.selectedIds.size > 0) void store.exportSelection(1, 'fig')
     },

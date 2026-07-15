@@ -25,10 +25,10 @@ export const ARABIC_LOCAL_FALLBACK_FAMILIES = [
 export const ARABIC_REMOTE_FALLBACK_FAMILIES = ['Noto Naskh Arabic', 'Noto Sans Arabic']
 
 export function cjkLocalFallbackFamilies(userAgent?: string): string[] {
-  if (!userAgent) return [...CJK_FALLBACK_FAMILIES_LINUX]
-  if (userAgent.includes('Mac')) return [...CJK_FALLBACK_FAMILIES_MACOS]
+  if (!userAgent) return ['Noto Sans SC', ...CJK_FALLBACK_FAMILIES_LINUX]
+  if (userAgent.includes('Mac')) return ['Noto Sans SC', ...CJK_FALLBACK_FAMILIES_MACOS]
   if (userAgent.includes('Windows')) return [...CJK_FALLBACK_FAMILIES_WINDOWS]
-  return [...CJK_FALLBACK_FAMILIES_LINUX]
+  return ['Noto Sans SC', ...CJK_FALLBACK_FAMILIES_LINUX]
 }
 
 function platformCJKFamilies(
@@ -66,9 +66,16 @@ function cjkScriptLocalFallbackFamilies(
       })
     default:
       return platformCJKFamilies(userAgent, {
-        mac: ['PingFang SC', 'Heiti SC', 'PingFang TC', 'Hiragino Sans'],
-        windows: ['Microsoft YaHei UI', 'Microsoft YaHei', 'Noto Sans SC', 'DengXian', 'SimHei', 'SimSun'],
-        linux: ['Noto Sans CJK SC', 'WenQuanYi Micro Hei', 'Droid Sans Fallback']
+        mac: ['Noto Sans SC', 'PingFang SC', 'Heiti SC', 'PingFang TC', 'Hiragino Sans'],
+        windows: [
+          'Noto Sans SC',
+          'Microsoft YaHei UI',
+          'Microsoft YaHei',
+          'DengXian',
+          'SimHei',
+          'SimSun'
+        ],
+        linux: ['Noto Sans SC', 'Noto Sans CJK SC', 'WenQuanYi Micro Hei', 'Droid Sans Fallback']
       })
   }
 }

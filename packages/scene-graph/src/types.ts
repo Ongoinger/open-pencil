@@ -262,7 +262,7 @@ export interface PluginDataEntry {
   value: string
 }
 
-export type ExportFormatId = 'png' | 'jpg' | 'webp' | 'svg' | 'pdf' | 'html'
+export type ExportFormatId = 'png' | 'jpg' | 'webp' | 'svg' | 'pdf' | 'html' | 'vue'
 
 export interface ExportSetting {
   scale: number

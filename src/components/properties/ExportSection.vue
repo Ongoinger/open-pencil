@@ -33,6 +33,7 @@ const FORMAT_OPTIONS: { value: ExportFormatId; label: string }[] = [
   { value: 'webp', label: 'WEBP' },
   { value: 'svg', label: 'SVG' },
   { value: 'html', label: 'HTML' },
+  { value: 'vue', label: 'Vue' },
   { value: 'pdf', label: 'PDF' }
 ]
 

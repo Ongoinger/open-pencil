@@ -350,9 +350,9 @@ export const CJK_FALLBACK_FAMILIES_MACOS = [
 ]
 
 export const CJK_FALLBACK_FAMILIES_WINDOWS = [
+  'Noto Sans SC',
   'Microsoft YaHei UI',
   'Microsoft YaHei',
-  'Noto Sans SC',
   'DengXian',
   'Microsoft JhengHei',
   'Microsoft JhengHei UI',
@@ -363,6 +363,7 @@ export const CJK_FALLBACK_FAMILIES_WINDOWS = [
 ]
 
 export const CJK_FALLBACK_FAMILIES_LINUX = [
+  'Noto Sans SC',
   'Noto Sans CJK SC',
   'Noto Sans CJK TC',
   'Noto Sans CJK JP',

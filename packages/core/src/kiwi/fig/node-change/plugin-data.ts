@@ -95,7 +95,8 @@ function isExportFormatId(value: unknown): value is ExportFormatId {
     value === 'webp' ||
     value === 'svg' ||
     value === 'pdf' ||
-    value === 'html'
+    value === 'html' ||
+    value === 'vue'
   )
 }
 

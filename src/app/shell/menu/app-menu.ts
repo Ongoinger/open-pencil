@@ -73,7 +73,7 @@ export function useAppMenu() {
     }))
   )
 
-  function exportSelection(format: 'png' | 'svg' | 'html' | 'fig') {
+  function exportSelection(format: 'png' | 'svg' | 'html' | 'vue' | 'fig') {
     if (store.state.selectedIds.size > 0) void store.exportSelection(1, format)
   }
 
@@ -91,6 +91,7 @@ export function useAppMenu() {
     'export-png': () => exportSelection('png'),
     'export-svg': () => exportSelection('svg'),
     'export-html': () => exportSelection('html'),
+    'export-vue': () => exportSelection('vue'),
     'export-fig': () => exportSelection('fig'),
     ...createSharedEditorMenuActions(setTheme)
   }
