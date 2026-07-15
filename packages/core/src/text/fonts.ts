@@ -560,13 +560,15 @@ export class FontManager {
 
   private registerFontInCanvasKit(family: string, data: ArrayBuffer): boolean {
     if (data.byteLength < 4) return false
-    const providers =
-      this.fontProviders.size > 0
-        ? this.fontProviders
-        : this.fontProvider
-          ? new Set([this.fontProvider])
-          : null
-    if (!providers || providers.size === 0) return false
+
+    let providers: Iterable<TypefaceFontProvider>
+    if (this.fontProviders.size > 0) {
+      providers = this.fontProviders
+    } else if (this.fontProvider) {
+      providers = [this.fontProvider]
+    } else {
+      return false
+    }
 
     let registered = false
     for (const provider of providers) {
@@ -583,8 +585,8 @@ export class FontManager {
         provider.registerFont(data, family)
         families.add(family)
         registered = true
-      } catch {
-        // Keep trying other providers.
+      } catch (e) {
+        console.warn(`CanvasKit font register failed for "${family}":`, e)
       }
     }
     return registered
